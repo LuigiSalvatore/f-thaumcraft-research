@@ -116,22 +116,30 @@ public class ResearchSolver {
         return cost1 + cost2 + 1e-3;
     }
 
+    /**
+     * State for the Dijkstra search.
+     * Uses String keys (hex.toString()) as canonical hex identifiers instead of
+     * HexUtils.Hex objects, because HexUtils.Hex only overrides equals(HexUtils.Hex)
+     * — not equals(Object) — so it is unsafe in HashSet/HashMap.
+     */
     private static class SearchState implements Comparable<SearchState> {
-        final HexUtils.Hex hex;
+        final String hexKey;          // canonical key: hex.toString()
+        final HexUtils.Hex hex;       // kept only for getNeighbour() enumeration
         final Aspect aspect;
         final AspectList remainingPool;
         final double cost;
-        final List<HexUtils.Hex> pathHexes;
+        final List<String> pathKeys;
         final List<Aspect> pathAspects;
         final List<Combination> combinations;
 
-        SearchState(HexUtils.Hex hex, Aspect aspect, AspectList remainingPool, double cost,
-                    List<HexUtils.Hex> pathHexes, List<Aspect> pathAspects, List<Combination> combinations) {
+        SearchState(String hexKey, HexUtils.Hex hex, Aspect aspect, AspectList remainingPool, double cost,
+                    List<String> pathKeys, List<Aspect> pathAspects, List<Combination> combinations) {
+            this.hexKey = hexKey;
             this.hex = hex;
             this.aspect = aspect;
             this.remainingPool = remainingPool;
             this.cost = cost;
-            this.pathHexes = pathHexes;
+            this.pathKeys = pathKeys;
             this.pathAspects = pathAspects;
             this.combinations = combinations;
         }
@@ -151,26 +159,26 @@ public class ResearchSolver {
         AspectList totalPool = playerPool.copy();
         totalPool.add(bonusPool);
 
-        // Find all roots
-        List<HexUtils.Hex> roots = new ArrayList<HexUtils.Hex>();
+        // Find all root hex keys (String keys from the map, safe for Set/Map use).
+        List<String> rootKeys = new ArrayList<String>();
         for (Map.Entry<String, ResearchManager.HexEntry> entry : data.hexEntries.entrySet()) {
             if (entry.getValue().type == 1) { // ROOT
-                HexUtils.Hex hex = data.hexes.get(entry.getKey());
-                if (hex != null) {
-                    roots.add(hex);
+                if (data.hexes.containsKey(entry.getKey())) {
+                    rootKeys.add(entry.getKey());
                 }
             }
         }
 
-        if (roots.isEmpty()) {
+        if (rootKeys.isEmpty()) {
             return new SolveResult(Collections.<String, Aspect>emptyMap(), Collections.<Combination>emptyList());
         }
 
-        Set<HexUtils.Hex> connected = new HashSet<HexUtils.Hex>();
-        connected.add(roots.get(0));
+        // All sets/maps use String keys — no HexUtils.Hex in collections.
+        Set<String> connected = new HashSet<String>();
+        connected.add(rootKeys.get(0));
 
-        Set<HexUtils.Hex> remainingTargets = new HashSet<HexUtils.Hex>(roots);
-        remainingTargets.remove(roots.get(0));
+        Set<String> remainingTargets = new HashSet<String>(rootKeys);
+        remainingTargets.remove(rootKeys.get(0));
 
         Map<String, Aspect> finalPlacements = new HashMap<String, Aspect>();
         List<Combination> finalCombinations = new ArrayList<Combination>();
@@ -181,28 +189,31 @@ public class ResearchSolver {
             PriorityQueue<SearchState> queue = new PriorityQueue<SearchState>();
 
             // Push all connected hexes into the queue
-            for (HexUtils.Hex startHex : connected) {
-                Aspect startAspect = getAspectAt(data, finalPlacements, startHex);
+            for (String startKey : connected) {
+                HexUtils.Hex startHex = data.hexes.get(startKey);
+                if (startHex == null) continue;
+                Aspect startAspect = getAspectAt(data, finalPlacements, startKey);
                 if (startAspect != null) {
                     queue.add(new SearchState(
-                        startHex, startAspect, totalPool.copy(), 0.0,
-                        Collections.singletonList(startHex),
+                        startKey, startHex, startAspect, totalPool.copy(), 0.0,
+                        Collections.singletonList(startKey),
                         Collections.singletonList(startAspect),
                         Collections.<Combination>emptyList()
                     ));
                 }
             }
 
+            // visited key: hexKey + ":" + aspect tag
             Set<String> visited = new HashSet<String>();
 
             while (!queue.isEmpty()) {
                 SearchState current = queue.poll();
-                String key = current.hex.toString() + ":" + current.aspect.getTag();
+                String visitedKey = current.hexKey + ":" + current.aspect.getTag();
 
-                if (visited.contains(key)) continue;
-                visited.add(key);
+                if (visited.contains(visitedKey)) continue;
+                visited.add(visitedKey);
 
-                if (remainingTargets.contains(current.hex)) {
+                if (remainingTargets.contains(current.hexKey)) {
                     cheapestTargetState = current;
                     break;
                 }
@@ -210,7 +221,7 @@ public class ResearchSolver {
                 // Explore neighbors
                 for (int i = 0; i < 6; i++) {
                     HexUtils.Hex neighbor = current.hex.getNeighbour(i);
-                    String neighborKey = neighbor.toString();
+                    String neighborKey = neighbor.toString(); // safe: key == toString()
 
                     if (!data.hexes.containsKey(neighborKey)) continue; // Void/obstacle
 
@@ -218,22 +229,22 @@ public class ResearchSolver {
                     if (neighborEntry == null) continue;
 
                     // If neighbor is a ROOT but not our target, we cannot cross it
-                    if (neighborEntry.type == 1 && !remainingTargets.contains(neighbor)) {
+                    if (neighborEntry.type == 1 && !remainingTargets.contains(neighborKey)) {
                         continue;
                     }
 
                     // Preplaced aspect (ROOT, or already placed aspect)
-                    Aspect preplaced = getAspectAt(data, finalPlacements, neighbor);
+                    Aspect preplaced = getAspectAt(data, finalPlacements, neighborKey);
                     if (preplaced != null) {
                         if (areRelated(current.aspect, preplaced)) {
-                            List<HexUtils.Hex> nextPathHexes = new ArrayList<HexUtils.Hex>(current.pathHexes);
-                            nextPathHexes.add(neighbor);
+                            List<String> nextPathKeys = new ArrayList<String>(current.pathKeys);
+                            nextPathKeys.add(neighborKey);
                             List<Aspect> nextPathAspects = new ArrayList<Aspect>(current.pathAspects);
                             nextPathAspects.add(preplaced);
 
                             queue.add(new SearchState(
-                                neighbor, preplaced, current.remainingPool.copy(), current.cost,
-                                nextPathHexes, nextPathAspects, current.combinations
+                                neighborKey, neighbor, preplaced, current.remainingPool.copy(), current.cost,
+                                nextPathKeys, nextPathAspects, current.combinations
                             ));
                         }
                         continue;
@@ -248,14 +259,14 @@ public class ResearchSolver {
                             if (tryToConsume(cand, nextPool, nextCombos)) {
                                 double stepCost = getAspectCost(cand, current.remainingPool);
                                 if (stepCost != Double.POSITIVE_INFINITY) {
-                                    List<HexUtils.Hex> nextPathHexes = new ArrayList<HexUtils.Hex>(current.pathHexes);
-                                    nextPathHexes.add(neighbor);
+                                    List<String> nextPathKeys = new ArrayList<String>(current.pathKeys);
+                                    nextPathKeys.add(neighborKey);
                                     List<Aspect> nextPathAspects = new ArrayList<Aspect>(current.pathAspects);
                                     nextPathAspects.add(cand);
 
                                     queue.add(new SearchState(
-                                        neighbor, cand, nextPool, current.cost + stepCost,
-                                        nextPathHexes, nextPathAspects, nextCombos
+                                        neighborKey, neighbor, cand, nextPool, current.cost + stepCost,
+                                        nextPathKeys, nextPathAspects, nextCombos
                                     ));
                                 }
                             }
@@ -270,13 +281,12 @@ public class ResearchSolver {
             }
 
             // Path found! Apply it
-            for (int i = 0; i < cheapestTargetState.pathHexes.size(); i++) {
-                HexUtils.Hex h = cheapestTargetState.pathHexes.get(i);
+            for (int i = 0; i < cheapestTargetState.pathKeys.size(); i++) {
+                String hexKey = cheapestTargetState.pathKeys.get(i);
                 Aspect a = cheapestTargetState.pathAspects.get(i);
-                connected.add(h);
+                connected.add(hexKey);
 
-                // If it was vacant, place it
-                String hexKey = h.toString();
+                // If it was vacant, record the placement
                 ResearchManager.HexEntry entry = data.hexEntries.get(hexKey);
                 if (entry != null && entry.type == 0 && !finalPlacements.containsKey(hexKey)) {
                     finalPlacements.put(hexKey, a);
@@ -285,18 +295,21 @@ public class ResearchSolver {
 
             finalCombinations.addAll(cheapestTargetState.combinations);
             totalPool = cheapestTargetState.remainingPool; // Deduct used aspects
-            remainingTargets.remove(cheapestTargetState.hex);
+            remainingTargets.remove(cheapestTargetState.hexKey);
         }
 
         return new SolveResult(finalPlacements, finalCombinations);
     }
 
-    private static Aspect getAspectAt(ResearchNoteData data, Map<String, Aspect> finalPlacements, HexUtils.Hex hex) {
-        String key = hex.toString();
-        if (finalPlacements.containsKey(key)) {
-            return finalPlacements.get(key);
+    /**
+     * Returns the aspect at a given hex key, or null if vacant/unknown.
+     * Uses String key throughout — no HexUtils.Hex identity issues.
+     */
+    private static Aspect getAspectAt(ResearchNoteData data, Map<String, Aspect> finalPlacements, String hexKey) {
+        if (finalPlacements.containsKey(hexKey)) {
+            return finalPlacements.get(hexKey);
         }
-        ResearchManager.HexEntry entry = data.hexEntries.get(key);
+        ResearchManager.HexEntry entry = data.hexEntries.get(hexKey);
         if (entry != null) {
             if (entry.type == 1) { // ROOT
                 return entry.aspect;
