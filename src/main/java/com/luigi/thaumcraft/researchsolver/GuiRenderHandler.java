@@ -6,6 +6,8 @@ import cpw.mods.fml.relauncher.SideOnly;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraftforge.client.event.GuiScreenEvent;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL11;
 import thaumcraft.api.aspects.Aspect;
 import thaumcraft.client.gui.GuiResearchTable;
@@ -19,26 +21,16 @@ import java.util.Map;
 /**
  * Renders ghost aspect icons (50% alpha) over vacant hexes when the
  * "View Solution" overlay is toggled on.
- *
- * Coordinate system matches drawHex() exactly:
- *   screenX = guiLeft + hex.toPixel(HEX_SIZE).x
- *   screenY = guiTop  + hex.toPixel(HEX_SIZE).y
- *
- * Icon rendering reuses Thaumcraft's own UtilsFX.drawTag(), which handles
- * texture binding and aspect icon lookup internally, keeping us independent
- * of the internal icon registration logic.
  */
 @SideOnly(Side.CLIENT)
 public class GuiRenderHandler {
 
-    /** Must match GuiResearchTable.HEX_SIZE (confirmed = 9 from bytecode). */
+    private static final Logger LOG = LogManager.getLogger("ThaumcraftResearchSolver");
     private static final int HEX_SIZE = 9;
-
-    private static final org.apache.logging.log4j.Logger LOG = org.apache.logging.log4j.LogManager.getLogger("ThaumcraftResearchSolver");
 
     @SubscribeEvent
     public void onDrawScreen(GuiScreenEvent.DrawScreenEvent.Post event) {
-        if (!(event.gui instanceof GuiResearchTable)) {
+        if (!GuiOverlayHandler.isResearchGui(event.gui)) {
             return;
         }
         if (!GuiOverlayHandler.viewSolutionActive) {
@@ -50,8 +42,8 @@ public class GuiRenderHandler {
             return;
         }
 
-        GuiResearchTable gui = (GuiResearchTable) event.gui;
-        ResearchNoteData note = gui.note;
+        net.minecraft.client.gui.GuiScreen gui = event.gui;
+        ResearchNoteData note = GuiOverlayHandler.getNote(gui);
         if (note == null || note.hexes == null || note.hexEntries == null) {
             return;
         }
@@ -59,14 +51,19 @@ public class GuiRenderHandler {
         int guiLeft = getGuiLeft(gui);
         int guiTop  = getGuiTop(gui);
 
+        boolean isTweaks = gui.getClass().getName().equals("elan.tweaks.common.gui.ComposableContainerGui");
+        // Center offsets of the research area on the parchment relative to guiLeft/guiTop:
+        // Vanilla: center at (169, 83)
+        // Tweaked: center at (171, 110)
+        int centerX = isTweaks ? 171 : 169;
+        int centerY = isTweaks ? 110 : 83;
+
         GL11.glPushMatrix();
-        // Enable blending for the 50% ghost effect.
         GL11.glEnable(GL11.GL_BLEND);
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
         GL11.glEnable(GL11.GL_ALPHA_TEST);
         GL11.glAlphaFunc(GL11.GL_GREATER, 0.003921569f);
 
-        int renderedCount = 0;
         for (Map.Entry<String, Aspect> entry : result.placements.entrySet()) {
             String hexKey = entry.getKey();
             Aspect aspect = entry.getValue();
@@ -83,11 +80,10 @@ public class GuiRenderHandler {
             }
 
             HexUtils.Pixel pixel = hex.toPixel(HEX_SIZE);
-            int screenX = guiLeft + (int) pixel.x;
-            int screenY = guiTop  + (int) pixel.y;
+            int screenX = guiLeft + centerX + (int) pixel.x;
+            int screenY = guiTop  + centerY + (int) pixel.y;
 
             drawGhostAspect(aspect, screenX, screenY);
-            renderedCount++;
         }
 
         GL11.glColor4f(1f, 1f, 1f, 1f);
@@ -95,10 +91,6 @@ public class GuiRenderHandler {
         GL11.glPopMatrix();
     }
 
-    /**
-     * Draws a single aspect icon centred at (cx, cy) with 50% alpha.
-     * We draw a 16×16 quad textured with the aspect's icon resource location.
-     */
     private void drawGhostAspect(Aspect aspect, int cx, int cy) {
         if (aspect == null || aspect.getImage() == null) {
             return;
@@ -118,11 +110,7 @@ public class GuiRenderHandler {
         tess.draw();
     }
 
-    // -------------------------------------------------------------------------
-    // Helpers — use cached reflection fields from GuiOverlayHandler (same package)
-    // -------------------------------------------------------------------------
-
-    private static int getGuiLeft(GuiResearchTable gui) {
+    private static int getGuiLeft(net.minecraft.client.gui.GuiScreen gui) {
         try {
             Field f = GuiOverlayHandler.f_guiLeft;
             return f != null ? f.getInt(gui) : fallbackGuiLeft();
@@ -131,7 +119,7 @@ public class GuiRenderHandler {
         }
     }
 
-    private static int getGuiTop(GuiResearchTable gui) {
+    private static int getGuiTop(net.minecraft.client.gui.GuiScreen gui) {
         try {
             Field f = GuiOverlayHandler.f_guiTop;
             return f != null ? f.getInt(gui) : fallbackGuiTop();

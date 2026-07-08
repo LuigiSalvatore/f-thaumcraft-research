@@ -1,9 +1,12 @@
 package com.luigi.thaumcraft.researchsolver;
 
+import cpw.mods.fml.client.event.ConfigChangedEvent;
+import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.Mod;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
 import cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
+import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.network.NetworkCheckHandler;
 import cpw.mods.fml.relauncher.Side;
 import net.minecraftforge.common.MinecraftForge;
@@ -25,7 +28,8 @@ import java.util.Map;
     modid   = ThaumcraftResearchSolver.MODID,
     name    = ThaumcraftResearchSolver.NAME,
     version = ThaumcraftResearchSolver.VERSION,
-    acceptableRemoteVersions = "*"
+    acceptableRemoteVersions = "*",
+    guiFactory = "com.luigi.thaumcraft.researchsolver.ModGuiFactory"
 )
 public class ThaumcraftResearchSolver {
 
@@ -42,7 +46,8 @@ public class ThaumcraftResearchSolver {
 
     @Mod.EventHandler
     public void preInit(FMLPreInitializationEvent event) {
-        // Nothing needed at pre-init for a pure GUI add-on.
+        // Load configurations
+        Config.load(event.getSuggestedConfigurationFile());
     }
 
     @Mod.EventHandler
@@ -54,11 +59,21 @@ public class ThaumcraftResearchSolver {
         // and no server-side code is referenced anywhere in this mod.
         MinecraftForge.EVENT_BUS.register(new GuiOverlayHandler());
         MinecraftForge.EVENT_BUS.register(new GuiRenderHandler());
+
+        // Register configuration changed event handler on FML bus
+        FMLCommonHandler.instance().bus().register(this);
     }
 
     @Mod.EventHandler
     public void postInit(FMLPostInitializationEvent event) {
         // Nothing needed at post-init.
+    }
+
+    @SubscribeEvent
+    public void onConfigChanged(ConfigChangedEvent.OnConfigChangedEvent event) {
+        if (event.modID.equals(MODID)) {
+            Config.syncConfig();
+        }
     }
 
     // -------------------------------------------------------------------------
