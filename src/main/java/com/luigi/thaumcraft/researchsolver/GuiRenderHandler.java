@@ -34,6 +34,8 @@ public class GuiRenderHandler {
     /** Must match GuiResearchTable.HEX_SIZE (confirmed = 9 from bytecode). */
     private static final int HEX_SIZE = 9;
 
+    private static final org.apache.logging.log4j.Logger LOG = org.apache.logging.log4j.LogManager.getLogger("ThaumcraftResearchSolver");
+
     @SubscribeEvent
     public void onDrawScreen(GuiScreenEvent.DrawScreenEvent.Post event) {
         if (!(event.gui instanceof GuiResearchTable)) {
@@ -42,6 +44,7 @@ public class GuiRenderHandler {
         if (!GuiOverlayHandler.viewSolutionActive) {
             return;
         }
+        
         ResearchSolver.SolveResult result = GuiOverlayHandler.lastSolveResult;
         if (result == null || result.placements.isEmpty()) {
             return;
@@ -63,12 +66,12 @@ public class GuiRenderHandler {
         GL11.glEnable(GL11.GL_ALPHA_TEST);
         GL11.glAlphaFunc(GL11.GL_GREATER, 0.003921569f);
 
+        int renderedCount = 0;
         for (Map.Entry<String, Aspect> entry : result.placements.entrySet()) {
             String hexKey = entry.getKey();
             Aspect aspect = entry.getValue();
 
             // Only render on hexes that are still vacant in the live note data.
-            // (If the player has already placed something since we last solved, skip it.)
             ResearchManager.HexEntry hexEntry = note.hexEntries.get(hexKey);
             if (hexEntry == null || hexEntry.type != 0) {
                 continue; // not vacant any more
@@ -84,6 +87,7 @@ public class GuiRenderHandler {
             int screenY = guiTop  + (int) pixel.y;
 
             drawGhostAspect(aspect, screenX, screenY);
+            renderedCount++;
         }
 
         GL11.glColor4f(1f, 1f, 1f, 1f);

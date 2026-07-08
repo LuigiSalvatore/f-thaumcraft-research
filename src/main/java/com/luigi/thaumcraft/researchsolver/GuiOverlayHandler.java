@@ -74,61 +74,116 @@ public class GuiOverlayHandler {
     static Field f_guiLeft     = null;
     static Field f_guiTop      = null;
 
+    private static Field findField(Class<?> clazz, String... names) throws NoSuchFieldException {
+        for (String name : names) {
+            try {
+                Field f = clazz.getDeclaredField(name);
+                f.setAccessible(true);
+                return f;
+            } catch (NoSuchFieldException e) {
+                // Try next candidate name
+            }
+        }
+        throw new NoSuchFieldException("None of the fields " + java.util.Arrays.toString(names) + " found in " + clazz.getName());
+    }
+
     private static void initReflection() {
         if (f_tileEntity != null) {
             return; // already initialised
         }
+        LOG.info("[ResearchSolver] Starting reflection initialization...");
         try {
             f_tileEntity = GuiResearchTable.class.getDeclaredField("tileEntity");
             f_tileEntity.setAccessible(true);
+            LOG.info("[ResearchSolver] Found tileEntity field.");
 
             f_player = GuiResearchTable.class.getDeclaredField("player");
             f_player.setAccessible(true);
+            LOG.info("[ResearchSolver] Found player field.");
 
-            // GuiScreen.buttonList is protected; use the srg name to be safe under obfuscation.
-            // In the dev environment (MCP mappings) it is "buttonList".
-            f_buttonList = GuiScreen.class.getDeclaredField("buttonList");
-            f_buttonList.setAccessible(true);
+            // Try "buttonList" (MCP) and "field_146292_n" (SRG)
+            f_buttonList = findField(GuiScreen.class, "buttonList", "field_146292_n");
+            LOG.info("[ResearchSolver] Found buttonList field.");
 
-            // GuiContainer guiLeft / guiTop: srg names field_147003_i / field_147009_r
-            f_guiLeft = GuiContainer.class.getDeclaredField("field_147003_i");
-            f_guiLeft.setAccessible(true);
+            // Try "guiLeft" (MCP) and "field_147003_i" (SRG)
+            f_guiLeft = findField(GuiContainer.class, "guiLeft", "field_147003_i");
+            LOG.info("[ResearchSolver] Found guiLeft field.");
 
-            f_guiTop = GuiContainer.class.getDeclaredField("field_147009_r");
-            f_guiTop.setAccessible(true);
+            // Try "guiTop" (MCP) and "field_147009_r" (SRG)
+            f_guiTop = findField(GuiContainer.class, "guiTop", "field_147009_r");
+            LOG.info("[ResearchSolver] Found guiTop field.");
 
-        } catch (NoSuchFieldException e) {
-            LOG.error("[ResearchSolver] Reflection init failed — field not found: {}", e.getMessage());
-            LOG.error("[ResearchSolver] This usually means the Thaumcraft or Forge version changed.");
+        } catch (Exception e) {
+            LOG.error("[ResearchSolver] CRITICAL: Reflection initialization failed!", e);
         }
     }
 
-    // Null-safe accessors
+    // Null-safe accessors with error logging
 
     private static TileResearchTable getTileEntity(GuiResearchTable gui) {
-        try { return (TileResearchTable) f_tileEntity.get(gui); }
-        catch (Exception e) { return null; }
+        try {
+            if (f_tileEntity == null) {
+                LOG.error("[ResearchSolver] getTileEntity called but f_tileEntity is null!");
+                return null;
+            }
+            return (TileResearchTable) f_tileEntity.get(gui);
+        } catch (Exception e) {
+            LOG.error("[ResearchSolver] Failed to get tileEntity via reflection!", e);
+            return null;
+        }
     }
 
     private static EntityPlayer getPlayer(GuiResearchTable gui) {
-        try { return (EntityPlayer) f_player.get(gui); }
-        catch (Exception e) { return Minecraft.getMinecraft().thePlayer; }
+        try {
+            if (f_player == null) {
+                LOG.error("[ResearchSolver] getPlayer called but f_player is null!");
+                return Minecraft.getMinecraft().thePlayer;
+            }
+            return (EntityPlayer) f_player.get(gui);
+        } catch (Exception e) {
+            LOG.error("[ResearchSolver] Failed to get player via reflection!", e);
+            return Minecraft.getMinecraft().thePlayer;
+        }
     }
 
     @SuppressWarnings("unchecked")
     private static List<GuiButton> getButtonList(GuiScreen gui) {
-        try { return (List<GuiButton>) f_buttonList.get(gui); }
-        catch (Exception e) { return null; }
+        try {
+            if (f_buttonList == null) {
+                LOG.error("[ResearchSolver] getButtonList called but f_buttonList is null!");
+                return null;
+            }
+            return (List<GuiButton>) f_buttonList.get(gui);
+        } catch (Exception e) {
+            LOG.error("[ResearchSolver] Failed to get buttonList via reflection!", e);
+            return null;
+        }
     }
 
     private static int getGuiLeft(GuiScreen gui) {
-        try { return f_guiLeft != null ? f_guiLeft.getInt(gui) : 0; }
-        catch (Exception e) { return 0; }
+        try {
+            if (f_guiLeft == null) {
+                LOG.error("[ResearchSolver] getGuiLeft called but f_guiLeft is null!");
+                return 0;
+            }
+            return f_guiLeft.getInt(gui);
+        } catch (Exception e) {
+            LOG.error("[ResearchSolver] Failed to get guiLeft via reflection!", e);
+            return 0;
+        }
     }
 
     private static int getGuiTop(GuiScreen gui) {
-        try { return f_guiTop != null ? f_guiTop.getInt(gui) : 0; }
-        catch (Exception e) { return 0; }
+        try {
+            if (f_guiTop == null) {
+                LOG.error("[ResearchSolver] getGuiTop called but f_guiTop is null!");
+                return 0;
+            }
+            return f_guiTop.getInt(gui);
+        } catch (Exception e) {
+            LOG.error("[ResearchSolver] Failed to get guiTop via reflection!", e);
+            return 0;
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -137,9 +192,13 @@ public class GuiOverlayHandler {
 
     @SubscribeEvent
     public void onGuiInit(GuiScreenEvent.InitGuiEvent.Post event) {
+        String guiClassName = (event.gui != null) ? event.gui.getClass().getName() : "null";
+        LOG.info("[ResearchSolver] InitGuiEvent.Post event fired. Gui: " + guiClassName);
+
         if (!(event.gui instanceof GuiResearchTable)) {
             return;
         }
+        LOG.info("[ResearchSolver] Gui is an instance of GuiResearchTable. Proceeding with button injection.");
         initReflection();
 
         // Reset overlay state whenever a new Research Table GUI opens.
@@ -148,22 +207,29 @@ public class GuiOverlayHandler {
 
         int guiLeft = getGuiLeft(event.gui);
         int guiTop  = getGuiTop(event.gui);
+        LOG.info("[ResearchSolver] Computed layout offsets: guiLeft=" + guiLeft + ", guiTop=" + guiTop);
 
         // Buttons are placed in the top-right corner of the research parchment panel.
         // The parchment is 176 wide; we place 76-wide buttons just inside the right edge.
         List<GuiButton> buttons = getButtonList(event.gui);
         if (buttons == null) {
+            LOG.error("[ResearchSolver] Cannot inject buttons: buttonList is null!");
             return;
         }
+        
+        LOG.info("[ResearchSolver] Injecting Solve button at: " + (guiLeft + 168) + ", " + (guiTop + 4));
         buttons.add(new GuiButton(BTN_SOLVE,
             guiLeft + 168, guiTop + 4,
             76, 16,
             "Solve"));
+            
+        LOG.info("[ResearchSolver] Injecting View Solution button at: " + (guiLeft + 168) + ", " + (guiTop + 22));
         buttons.add(new GuiButton(BTN_VIEW_TOGGLE,
             guiLeft + 168, guiTop + 22,
             76, 16,
             "View Solution"));
 
+        LOG.info("[ResearchSolver] Successfully injected buttons. Total button count now: " + buttons.size());
         updateButtonStates(event.gui);
     }
 
