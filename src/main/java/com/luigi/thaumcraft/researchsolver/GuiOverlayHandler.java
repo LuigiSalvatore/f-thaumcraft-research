@@ -353,23 +353,52 @@ public class GuiOverlayHandler {
             return null;
         }
 
+        // --- Diagnostic dump of note contents ---
+        LOG.info("[ResearchSolver] Note key: " + note.key);
+        if (note.hexEntries == null) {
+            LOG.error("[ResearchSolver] note.hexEntries is NULL!");
+        } else {
+            int roots = 0, nodes = 0, vacants = 0;
+            for (thaumcraft.common.lib.research.ResearchManager.HexEntry e : note.hexEntries.values()) {
+                if (e.type == 1) roots++;
+                else if (e.type == 2) nodes++;
+                else vacants++;
+            }
+            LOG.info("[ResearchSolver] hexEntries: " + note.hexEntries.size() + " total ("
+                + roots + " roots, " + nodes + " nodes, " + vacants + " vacant)");
+        }
+        if (note.hexes == null) {
+            LOG.error("[ResearchSolver] note.hexes is NULL!");
+        } else {
+            LOG.info("[ResearchSolver] hexes map size: " + note.hexes.size());
+        }
+        // ----------------------------------------
+
         EntityPlayer player = getPlayer(gui);
         if (player == null) {
+            LOG.error("[ResearchSolver] Player is null!");
             return null;
         }
 
         AspectList playerPool = Thaumcraft.proxy.getPlayerKnowledge()
             .getAspectsDiscovered(player.getCommandSenderName());
         if (playerPool == null) {
+            LOG.warn("[ResearchSolver] playerPool is null — using empty pool.");
             playerPool = new AspectList();
+        } else {
+            LOG.info("[ResearchSolver] playerPool has " + playerPool.size() + " aspect types.");
         }
 
         TileResearchTable tile = getTileEntity(gui);
         AspectList bonusPool = (tile != null && tile.bonusAspects != null)
             ? tile.bonusAspects
             : new AspectList();
+        LOG.info("[ResearchSolver] bonusPool size: " + bonusPool.size());
 
-        return ResearchSolver.solve(note, playerPool, bonusPool);
+        ResearchSolver.SolveResult result = ResearchSolver.solve(note, playerPool, bonusPool);
+        LOG.info("[ResearchSolver] Solver result: " + result.placements.size() + " placements, "
+            + result.combinations.size() + " combinations.");
+        return result;
     }
 
     private void updateButtonStates(GuiScreen gui) {
