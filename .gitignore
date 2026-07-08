@@ -36,3 +36,5 @@ addon.late.local.gradle.kts
 
 # Exclude Thaumcraft jar
 /libs/*.jar
+/thaumcraft_solver_agent_prompt.md
+

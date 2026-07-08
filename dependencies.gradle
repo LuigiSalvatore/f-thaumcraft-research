@@ -1,0 +1,4 @@
+dependencies {
+    // Compile against Thaumcraft deobf dev jar from GTNH Maven
+    implementation 'thaumcraft:Thaumcraft:1.7.10-4.2.3.5:dev'
+}
