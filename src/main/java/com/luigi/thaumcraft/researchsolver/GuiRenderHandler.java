@@ -4,17 +4,16 @@ import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.relauncher.Side;
 import cpw.mods.fml.relauncher.SideOnly;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraftforge.client.event.GuiScreenEvent;
 import org.lwjgl.opengl.GL11;
 import thaumcraft.api.aspects.Aspect;
 import thaumcraft.client.gui.GuiResearchTable;
-import thaumcraft.client.lib.UtilsFX;
 import thaumcraft.common.lib.research.ResearchManager;
 import thaumcraft.common.lib.research.ResearchNoteData;
 import thaumcraft.common.lib.utils.HexUtils;
 
+import java.lang.reflect.Field;
 import java.util.Map;
 
 /**
@@ -116,28 +115,32 @@ public class GuiRenderHandler {
     }
 
     // -------------------------------------------------------------------------
-    // Helpers — read obfuscated GuiContainer.guiLeft / guiTop
+    // Helpers — use cached reflection fields from GuiOverlayHandler (same package)
     // -------------------------------------------------------------------------
 
     private static int getGuiLeft(GuiResearchTable gui) {
         try {
-            java.lang.reflect.Field f = net.minecraft.client.gui.inventory.GuiContainer.class
-                .getDeclaredField("field_147003_i");
-            f.setAccessible(true);
-            return f.getInt(gui);
+            Field f = GuiOverlayHandler.f_guiLeft;
+            return f != null ? f.getInt(gui) : fallbackGuiLeft();
         } catch (Exception e) {
-            return (Minecraft.getMinecraft().displayWidth / 2) - 128;
+            return fallbackGuiLeft();
         }
     }
 
     private static int getGuiTop(GuiResearchTable gui) {
         try {
-            java.lang.reflect.Field f = net.minecraft.client.gui.inventory.GuiContainer.class
-                .getDeclaredField("field_147009_r");
-            f.setAccessible(true);
-            return f.getInt(gui);
+            Field f = GuiOverlayHandler.f_guiTop;
+            return f != null ? f.getInt(gui) : fallbackGuiTop();
         } catch (Exception e) {
-            return (Minecraft.getMinecraft().displayHeight / 2) - 118;
+            return fallbackGuiTop();
         }
+    }
+
+    private static int fallbackGuiLeft() {
+        return (Minecraft.getMinecraft().displayWidth / 2) - 128;
+    }
+
+    private static int fallbackGuiTop() {
+        return (Minecraft.getMinecraft().displayHeight / 2) - 118;
     }
 }
