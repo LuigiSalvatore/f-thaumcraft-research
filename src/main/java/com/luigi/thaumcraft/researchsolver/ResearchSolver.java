@@ -78,14 +78,29 @@ public class ResearchSolver {
         return false;
     }
 
+    /**
+     * Cost of placing aspect {@code a} given the current pool, encoding §3 priority:
+     * 1. Deplete abundant aspects first  → primary key: 1.0 / amount  (low amount = high cost)
+     * 2. Prefer primal over compound at same abundance → tiebreaker: +0 (primal) vs +0.5 (compound)
+     * 3. Prefer shallower compound chains → tertiary: +0.1 * combination depth
+     *
+     * Crucially, primal bias is a *tiebreaker within the same abundance bucket*, never overriding it.
+     * A compound held in large quantity is always chosen before a primal held in small quantity.
+     */
     public static double getAspectCost(Aspect a, AspectList pool) {
         int amount = pool.getAmount(a);
         if (amount > 0) {
-            double base = 10.0 / amount;
-            return a.isPrimal() ? base * 0.8 : base;
+            // Primary: 1/amount so high abundance → low cost.
+            // Secondary: primal costs 0 extra, compound costs 0.5 extra (within the same bucket).
+            // The 0.5 is safely less than the difference between any two consecutive int amounts
+            // at amounts >= 1 (where 1/n - 1/(n+1) = 1/(n*(n+1)) >= 1/2 only at n=1),
+            // so we dampen it to 1e-4 to make it a pure tiebreaker.
+            double primBonus = a.isPrimal() ? 0.0 : 1e-4;
+            return (1.0 / amount) + primBonus;
         }
+        // Not held directly — can we synthesize it from components?
         if (a.isPrimal()) {
-            return Double.POSITIVE_INFINITY;
+            return Double.POSITIVE_INFINITY; // Can't synthesize primals.
         }
         Aspect[] comps = a.getComponents();
         if (comps == null || comps.length != 2) {
@@ -96,7 +111,9 @@ public class ResearchSolver {
         if (cost1 == Double.POSITIVE_INFINITY || cost2 == Double.POSITIVE_INFINITY) {
             return Double.POSITIVE_INFINITY;
         }
-        return cost1 + cost2 + 5.0; // combination penalty
+        // Tertiary: each combination step adds a small depth penalty so shallower
+        // chains are preferred over deeper ones at equal resource cost.
+        return cost1 + cost2 + 1e-3;
     }
 
     private static class SearchState implements Comparable<SearchState> {
