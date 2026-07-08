@@ -9,6 +9,22 @@ A client-side-only Minecraft Forge mod that adds two buttons to the **Thaumcraft
 
 ---
 
+## Compatibility & Configurability
+
+### Supporting Custom GUI Mods (e.g. Thaumcraft Research Tweaks)
+The mod is designed to work with both the standard vanilla **Thaumcraft Research Table** and the rewritten custom GUI from the **Thaumcraft Research Tweaks** mod (`elan.tweaks.common.gui.ComposableContainerGui`). It automatically detects which GUI is open and adjusts layout offsets accordingly so that buttons and ghost previews are placed correctly.
+
+### Configurable Button Positions
+You can configure the exact X/Y offsets of both the **Solve** and **View Solution** buttons:
+1. Go to the main menu -> **Mods**.
+2. Select **Thaumcraft Research Solver** from the list and click **Config**.
+3. Under the **position** category, you can change the button offsets for both the vanilla GUI and the tweaked GUI.
+4. Saving your changes will update the button positions immediately in-game (no restart required!).
+
+Alternatively, you can manually edit the config file created at `config/thaumcraftresearchsolver.cfg`.
+
+---
+
 ## What the mod does (plain language)
 
 Thaumcraft's research minigame shows you a hex grid of aspect slots. Some hexes are pre-filled (the roots — shown with a coloured background). You must fill in the blank hexes so that every filled neighbour pair shares a relationship: either one aspect is a direct component of the other, or they share a component. The puzzle is complete when all roots are connected through a chain of related aspects.
