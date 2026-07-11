@@ -72,15 +72,15 @@ public class ScribeToolHelper {
         }
 
         // Sort candidates:
-        // 1. Partially-used first (remaining uses ASC)
-        // 2. Lower capacity first (maxDamage ASC)
+        // 1. Lower capacity first (maxDamage ASC - lower tier first)
+        // 2. Partially-used first (remaining uses ASC - within the same tier)
         Collections.sort(candidates, new Comparator<ScribeToolCandidate>() {
             @Override
             public int compare(ScribeToolCandidate a, ScribeToolCandidate b) {
-                if (a.remainingUses != b.remainingUses) {
-                    return Integer.compare(a.remainingUses, b.remainingUses);
+                if (a.maxDamage != b.maxDamage) {
+                    return Integer.compare(a.maxDamage, b.maxDamage);
                 }
-                return Integer.compare(a.maxDamage, b.maxDamage);
+                return Integer.compare(a.remainingUses, b.remainingUses);
             }
         });
 

@@ -42,8 +42,8 @@ Thaumcraft's research minigame shows you a hex grid of aspect slots. Some hexes 
 Solving puzzles consumes ink from the scribing tools (quill or inkwell) located in slot 0 of the table. When the tool in the table runs dry:
 - If **Auto-refill Scribing Tools** is enabled, the mod scans your inventory for any valid scribing tool (`IScribeTools` implementation).
 - If multiple candidates are found, it sorts them by a smart priority system:
-  1. **Partially-used tools first** (uses up tools that have already been started, keeping fresh ones clean).
-  2. **Lower-capacity tools first** as a tiebreaker (uses cheap vanilla quills with 100 max capacity before premium ThaumicTinkerer infused inkwells with 800 capacity).
+  1. **Lower-capacity tools first.** Always prefer the lowest-capacity tool type (lower tier) first, full stop — this means every normal Thaumcraft inkwell (maxDamage 100) gets selected and fully drained before a ThaumicTinkerer infused inkwell (maxDamage 800) or other higher-tier tools are touched, regardless of how depleted the higher-tier tool already is.
+  2. **Partially-used tools first** (within the same tier) — so among multiple normal quills, the most-used one gets finished off before starting a fresh one.
 - It swaps the tool in using client-side window-click packets authoritative to the server, and continues solving.
 - If no scribing tools remain in your inventory, it stops cleanly with a chat message informing you how many notes were solved.
 
