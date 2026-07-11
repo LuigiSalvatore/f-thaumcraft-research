@@ -33,11 +33,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-# ── Prerequisites ────────────────────────────────────────────────────────────
+# ---- Prerequisites ----------------------------------------------------------
 
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-    Write-Error @"
-GitHub CLI (gh) is not installed or not on PATH.
+    Write-Host @"
+ERROR: GitHub CLI (gh) is not installed or not on PATH.
 
 Install it with:
     winget install GitHub.cli
@@ -46,126 +46,122 @@ Then authenticate:
     gh auth login
 
 See: https://cli.github.com
-"@
+"@ -ForegroundColor Red
     exit 1
 }
 
-$ghStatus = gh auth status 2>&1
+gh auth status 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
-    Write-Error @"
-GitHub CLI is not authenticated. Run:
-    gh auth login
-"@
+    Write-Host "ERROR: GitHub CLI is not authenticated. Run: gh auth login" -ForegroundColor Red
     exit 1
 }
 
-# ── Repository root check ────────────────────────────────────────────────────
+# ---- Repository root --------------------------------------------------------
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Push-Location $repoRoot
 
 try {
 
-# ── Check working tree ───────────────────────────────────────────────────────
+    # ---- Check working tree -------------------------------------------------
 
-$gitStatus = git status --porcelain 2>&1
-if ($gitStatus) {
-    Write-Warning "Working tree has uncommitted changes:"
-    $gitStatus | ForEach-Object { Write-Warning "  $_" }
-    $confirm = Read-Host "Release anyway? (y/N)"
-    if ($confirm -notmatch '^[yY]') {
-        Write-Host "Aborted." -ForegroundColor Yellow
-        exit 0
+    $gitStatus = git status --porcelain 2>&1
+    if ($gitStatus) {
+        Write-Warning "Working tree has uncommitted changes:"
+        $gitStatus | ForEach-Object { Write-Warning "  $_" }
+        $confirm = Read-Host "Release anyway? (y/N)"
+        if ($confirm -notmatch '^[yY]') {
+            Write-Host "Aborted." -ForegroundColor Yellow
+            exit 0
+        }
     }
-}
 
-# ── Tag collision check ──────────────────────────────────────────────────────
+    # ---- Tag collision check ------------------------------------------------
 
-$existingTag = git tag --list $Version 2>&1
-if ($existingTag) {
-    Write-Error "Tag '$Version' already exists. Delete it first: git tag -d $Version"
-    exit 1
-}
-
-# ── Build ────────────────────────────────────────────────────────────────────
-
-Write-Host "Building $Version..." -ForegroundColor Cyan
-.\gradlew build --console=plain
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "Build FAILED — aborting. No tag was created."
-    exit 1
-}
-Write-Host "Build succeeded." -ForegroundColor Green
-
-# ── Find the reobfuscated jar ────────────────────────────────────────────────
-
-# The GTNH buildscript names jars with git metadata; we want the reobf jar
-# (no -dev, no -sources).  The freshest one wins.
-$jar = Get-ChildItem "$repoRoot\build\libs\*.jar" |
-    Where-Object { $_.Name -notmatch '-dev\.jar$' -and $_.Name -notmatch '-sources\.jar$' } |
-    Sort-Object LastWriteTime -Descending |
-    Select-Object -First 1
-
-if (-not $jar) {
-    Write-Error "No reobfuscated jar found in build/libs/. Aborting."
-    exit 1
-}
-Write-Host "Jar: $($jar.Name)" -ForegroundColor Cyan
-
-# ── Tag and push ─────────────────────────────────────────────────────────────
-
-Write-Host "Tagging $Version..." -ForegroundColor Cyan
-git tag $Version
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "git tag failed. Aborting."
-    exit 1
-}
-
-git push origin $Version
-if ($LASTEXITCODE -ne 0) {
-    # Clean up the local tag so the user can retry cleanly
-    git tag -d $Version
-    Write-Error "git push of tag failed. Local tag removed. Check remote access and retry."
-    exit 1
-}
-Write-Host "Tag pushed." -ForegroundColor Green
-
-# ── Auto-generate notes if none provided ─────────────────────────────────────
-
-if (-not $Notes) {
-    $prevTag = git describe --tags --abbrev=0 HEAD^ 2>&1
-    if ($LASTEXITCODE -eq 0 -and $prevTag) {
-        $Notes = git log --oneline "$prevTag..HEAD" 2>&1 | Out-String
-        $Notes = "## Changes since $prevTag`n`n" + $Notes.Trim()
-    } else {
-        $Notes = "Initial release."
+    $existingTag = git tag --list $Version 2>&1
+    if ($existingTag) {
+        Write-Host "ERROR: Tag '$Version' already exists. Delete it first: git tag -d $Version" -ForegroundColor Red
+        exit 1
     }
-}
 
-# ── Create GitHub release ─────────────────────────────────────────────────────
+    # ---- Build --------------------------------------------------------------
 
-$title = "Thaumcraft Research Solver $Version"
+    Write-Host "Building $Version ..." -ForegroundColor Cyan
+    .\gradlew build --console=plain
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: Build FAILED -- aborting. No tag was created." -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "Build succeeded." -ForegroundColor Green
 
-$ghArgs = @(
-    "release", "create", $Version,
-    "--title", $title,
-    "--notes", $Notes,
-    $jar.FullName
-)
+    # ---- Find the reobfuscated jar ------------------------------------------
 
-if ($Draft) {
-    $ghArgs += "--draft"
-}
+    # The GTNH buildscript names jars with git metadata; we want the reobf jar
+    # (no -dev, no -sources). The freshest one wins.
+    $jar = Get-ChildItem "$repoRoot\build\libs\*.jar" |
+        Where-Object { $_.Name -notmatch '-dev\.jar$' -and $_.Name -notmatch '-sources\.jar$' } |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
 
-Write-Host "Creating GitHub release '$title'..." -ForegroundColor Cyan
-gh @ghArgs
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "gh release create failed. The tag has already been pushed; delete it manually if needed: git push origin --delete $Version"
-    exit 1
-}
+    if (-not $jar) {
+        Write-Host "ERROR: No reobfuscated jar found in build/libs/. Aborting." -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "Jar: $($jar.Name)" -ForegroundColor Cyan
 
-Write-Host ""
-Write-Host "Release $Version published successfully!" -ForegroundColor Green
+    # ---- Tag and push -------------------------------------------------------
+
+    Write-Host "Tagging $Version ..." -ForegroundColor Cyan
+    git tag $Version
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: git tag failed. Aborting." -ForegroundColor Red
+        exit 1
+    }
+
+    git push origin $Version
+    if ($LASTEXITCODE -ne 0) {
+        git tag -d $Version
+        Write-Host "ERROR: git push of tag failed. Local tag removed. Check remote access and retry." -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "Tag pushed." -ForegroundColor Green
+
+    # ---- Auto-generate notes if none provided --------------------------------
+
+    if (-not $Notes) {
+        $prevTag = git describe --tags --abbrev=0 "HEAD^" 2>&1
+        if ($LASTEXITCODE -eq 0 -and $prevTag) {
+            $logLines = git log --oneline "${prevTag}..HEAD" 2>&1 | Out-String
+            $Notes = "## Changes since $prevTag`n`n" + $logLines.Trim()
+        } else {
+            $Notes = "Initial release."
+        }
+    }
+
+    # ---- Create GitHub release ----------------------------------------------
+
+    $title = "Thaumcraft Research Solver $Version"
+
+    $ghArgs = @(
+        "release", "create", $Version,
+        "--title", $title,
+        "--notes", $Notes,
+        $jar.FullName
+    )
+
+    if ($Draft) {
+        $ghArgs += "--draft"
+    }
+
+    Write-Host "Creating GitHub release '$title' ..." -ForegroundColor Cyan
+    gh @ghArgs
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: gh release create failed. Tag already pushed; delete manually if needed: git push origin --delete $Version" -ForegroundColor Red
+        exit 1
+    }
+
+    Write-Host ""
+    Write-Host "Release $Version published successfully!" -ForegroundColor Green
 
 } finally {
     Pop-Location
