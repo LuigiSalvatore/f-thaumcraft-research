@@ -65,7 +65,8 @@ try {
 
     # ---- Check working tree -------------------------------------------------
 
-    $gitStatus = git status --porcelain 2>&1
+    # Only warn about tracked-file changes (staged or modified), not untracked files (??)
+    $gitStatus = git status --porcelain 2>&1 | Where-Object { $_ -notmatch '^\?\?' }
     if ($gitStatus) {
         Write-Warning "Working tree has uncommitted changes:"
         $gitStatus | ForEach-Object { Write-Warning "  $_" }
