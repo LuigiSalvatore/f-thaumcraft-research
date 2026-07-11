@@ -256,6 +256,13 @@ public class GuiOverlayHandler {
     // -------------------------------------------------------------------------
 
     @SubscribeEvent
+    public void onDrawScreen(GuiScreenEvent.DrawScreenEvent.Pre event) {
+        if (isResearchGui(event.gui)) {
+            updateButtonStates(event.gui);
+        }
+    }
+
+    @SubscribeEvent
     public void onGuiAction(GuiScreenEvent.ActionPerformedEvent.Pre event) {
         if (!isResearchGui(event.gui)) {
             return;
