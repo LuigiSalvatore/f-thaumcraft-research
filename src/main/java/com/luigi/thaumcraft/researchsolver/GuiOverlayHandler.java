@@ -47,6 +47,14 @@ public class GuiOverlayHandler {
     public static boolean viewSolutionActive = false;
     public static ResearchSolver.SolveResult lastSolveResult = null;
 
+    // State machine for asynchronous Solve All queue (prevents click desync)
+    public static List<Integer> solveAllQueue = null;
+    public static int solveAllIndex = 0;
+    public static int solveAllState = 0; // 0 = swap in & solve, 1 = swap out
+    public static int solveAllDelay = 0; // frame delay counter
+    public static int solveAllSolved = 0;
+    public static int solveAllSkipped = 0;
+
     // -------------------------------------------------------------------------
     // Cached reflection fields for vanilla GUI elements
     // -------------------------------------------------------------------------
@@ -274,6 +282,9 @@ public class GuiOverlayHandler {
     public void onDrawScreen(GuiScreenEvent.DrawScreenEvent.Pre event) {
         if (isResearchGui(event.gui)) {
             updateButtonStates(event.gui);
+            tickSolveAll(event.gui);
+        } else {
+            solveAllQueue = null;
         }
     }
 
@@ -364,7 +375,6 @@ public class GuiOverlayHandler {
         if (!(gui instanceof GuiContainer)) {
             return;
         }
-        GuiContainer containerGui = (GuiContainer) gui;
         EntityPlayer player = getPlayer(gui);
         TileResearchTable tile = getTileEntity(gui);
         if (player == null || tile == null) {
@@ -372,8 +382,8 @@ public class GuiOverlayHandler {
             return;
         }
 
-        int solvedCount = 0;
-        int skippedCount = 0;
+        solveAllSolved = 0;
+        solveAllSkipped = 0;
 
         // 1. Solve the note currently in the table if present
         ResearchNoteData currentNote = getNote(gui);
@@ -382,23 +392,68 @@ public class GuiOverlayHandler {
             if (result != null && !result.placements.isEmpty()) {
                 if (ensureInkForPlacements(gui, tile, player, result.placements.size())) {
                     handleSolve(gui);
-                    solvedCount++;
+                    solveAllSolved++;
                 } else {
-                    player.addChatMessage(new net.minecraft.util.ChatComponentText("[ResearchSolver] Out of ink. Solve All stopped. Solved: " + solvedCount + ", skipped: " + skippedCount));
+                    player.addChatMessage(new net.minecraft.util.ChatComponentText("[ResearchSolver] Out of ink. Solve All stopped. Solved: " + solveAllSolved));
                     return;
                 }
             } else {
-                skippedCount++;
+                solveAllSkipped++;
             }
         }
 
-        // 2. Solve notes in inventory
+        // 2. Scan and build queue of inventory notes
         List<Integer> noteSlots = findResearchNotesInInventory(gui);
-        for (int i = 0; i < noteSlots.size(); i++) {
-            int noteSlotIndex = noteSlots.get(i);
-            // Swap note into slot 1
+        if (noteSlots.isEmpty()) {
+            player.addChatMessage(new net.minecraft.util.ChatComponentText("[ResearchSolver] Solve All completed! Solved: " + solveAllSolved + " notes, skipped: " + solveAllSkipped + " completed/unsolvable notes."));
+            solveAllQueue = null;
+            return;
+        }
+
+        solveAllQueue = noteSlots;
+        solveAllIndex = 0;
+        solveAllState = 0;
+        solveAllDelay = 10; // Wait 10 frames before starting swapping
+        player.addChatMessage(new net.minecraft.util.ChatComponentText("[ResearchSolver] Starting Solve All for " + noteSlots.size() + " notes in inventory..."));
+    }
+
+    private void tickSolveAll(GuiScreen gui) {
+        if (solveAllQueue == null) {
+            return;
+        }
+        if (!(gui instanceof GuiContainer)) {
+            solveAllQueue = null;
+            return;
+        }
+        GuiContainer containerGui = (GuiContainer) gui;
+        EntityPlayer player = getPlayer(gui);
+        TileResearchTable tile = getTileEntity(gui);
+        if (player == null || tile == null) {
+            solveAllQueue = null;
+            return;
+        }
+
+        if (solveAllDelay > 0) {
+            solveAllDelay--;
+            return;
+        }
+
+        if (solveAllIndex >= solveAllQueue.size()) {
+            player.addChatMessage(new net.minecraft.util.ChatComponentText("[ResearchSolver] Solve All completed! Solved: " + solveAllSolved + " notes, skipped: " + solveAllSkipped + " completed/unsolvable notes."));
+            solveAllQueue = null;
+            return;
+        }
+
+        int noteSlotIndex = solveAllQueue.get(solveAllIndex);
+
+        if (solveAllState == 0) {
+            // State 0: Swap note in and solve
             boolean swappedIn = ScribeToolHelper.swapSlots(containerGui.inventorySlots, player, noteSlotIndex, 1);
-            if (!swappedIn) continue;
+            if (!swappedIn) {
+                solveAllIndex++;
+                solveAllDelay = 5;
+                return;
+            }
 
             ResearchSolver.SolveResult result = computeSolution(gui);
             if (result != null && !result.placements.isEmpty()) {
@@ -431,23 +486,30 @@ public class GuiOverlayHandler {
                             }
                         }
                     }
-                    solvedCount++;
+                    solveAllSolved++;
+                    solveAllState = 1;
+                    solveAllDelay = 8; // Delay to allow server to process placements
                 } else {
-                    // Swap note back first!
+                    // Out of ink, swap back and abort Solve All
                     ScribeToolHelper.swapSlots(containerGui.inventorySlots, player, noteSlotIndex, 1);
-                    int remaining = noteSlots.size() - i;
-                    player.addChatMessage(new net.minecraft.util.ChatComponentText("[ResearchSolver] Out of ink. Solve All stopped. Solved: " + solvedCount + ", skipped: " + skippedCount + ", remaining in inventory: " + remaining));
-                    return;
+                    int remaining = solveAllQueue.size() - solveAllIndex;
+                    player.addChatMessage(new net.minecraft.util.ChatComponentText("[ResearchSolver] Out of ink. Solve All stopped. Solved: " + solveAllSolved + ", skipped: " + solveAllSkipped + ", remaining in inventory: " + remaining));
+                    solveAllQueue = null;
                 }
             } else {
-                skippedCount++;
+                solveAllSkipped++;
+                // Already completed or unsolvable, swap back out immediately
+                ScribeToolHelper.swapSlots(containerGui.inventorySlots, player, noteSlotIndex, 1);
+                solveAllIndex++;
+                solveAllDelay = 5;
             }
-
-            // Swap note back
+        } else if (solveAllState == 1) {
+            // State 1: Swap note back out
             ScribeToolHelper.swapSlots(containerGui.inventorySlots, player, noteSlotIndex, 1);
+            solveAllIndex++;
+            solveAllState = 0;
+            solveAllDelay = 8; // Delay before processing next note
         }
-
-        player.addChatMessage(new net.minecraft.util.ChatComponentText("[ResearchSolver] Solve All completed! Solved: " + solvedCount + " notes, skipped: " + skippedCount + " completed/unsolvable notes."));
     }
 
     private boolean ensureInkForPlacements(GuiScreen gui, TileResearchTable tile, EntityPlayer player, int requiredPlacements) {
