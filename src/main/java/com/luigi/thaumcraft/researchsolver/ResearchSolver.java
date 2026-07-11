@@ -173,7 +173,171 @@ public class ResearchSolver {
             return new SolveResult(Collections.<String, Aspect>emptyMap(), Collections.<Combination>emptyList());
         }
 
-        // All sets/maps use String keys — no HexUtils.Hex in collections.
+        if (rootKeys.size() > 1) {
+            List<String> targets = new ArrayList<String>(rootKeys);
+            String startKey = targets.remove(0);
+
+            List<List<String>> perms = getPermutations(targets);
+            for (List<String> perm : perms) {
+                SolveResult res = solveWithOrder(data, totalPool, startKey, perm);
+                if (res != null) {
+                    return res; // Complete solution found!
+                }
+            }
+        }
+
+        // Fallback to greedy if permutations fail or if there is only 1 root
+        return solveGreedyFallback(data, totalPool, rootKeys);
+    }
+
+    private static List<List<String>> getPermutations(List<String> list) {
+        List<List<String>> result = new ArrayList<List<String>>();
+        if (list.isEmpty()) {
+            result.add(list);
+            return result;
+        }
+        permute(list, 0, result);
+        return result;
+    }
+
+    private static void permute(List<String> list, int k, List<List<String>> result) {
+        if (k >= list.size()) {
+            result.add(new ArrayList<String>(list));
+            return;
+        }
+        for (int i = k; i < list.size(); i++) {
+            Collections.swap(list, i, k);
+            permute(list, k + 1, result);
+            Collections.swap(list, k, i);
+        }
+    }
+
+    private static SolveResult solveWithOrder(ResearchNoteData data, AspectList pool, String startKey, List<String> orderedTargets) {
+        Set<String> connected = new HashSet<String>();
+        connected.add(startKey);
+
+        Map<String, Aspect> finalPlacements = new HashMap<String, Aspect>();
+        List<Combination> finalCombinations = new ArrayList<Combination>();
+
+        AspectList totalPool = pool.copy();
+
+        for (String targetKey : orderedTargets) {
+            SearchState cheapestTargetState = null;
+            PriorityQueue<SearchState> queue = new PriorityQueue<SearchState>();
+
+            // Push all connected hexes into the queue
+            for (String startConnected : connected) {
+                HexUtils.Hex startHex = data.hexes.get(startConnected);
+                if (startHex == null) continue;
+                Aspect startAspect = getAspectAt(data, finalPlacements, startConnected);
+                if (startAspect != null) {
+                    queue.add(new SearchState(
+                        startConnected, startHex, startAspect, totalPool.copy(), 0.0,
+                        Collections.singletonList(startConnected),
+                        Collections.singletonList(startAspect),
+                        Collections.<Combination>emptyList()
+                    ));
+                }
+            }
+
+            // visited key: hexKey + ":" + aspect tag
+            Set<String> visited = new HashSet<String>();
+
+            while (!queue.isEmpty()) {
+                SearchState current = queue.poll();
+                String visitedKey = current.hexKey + ":" + current.aspect.getTag();
+
+                if (visited.contains(visitedKey)) continue;
+                visited.add(visitedKey);
+
+                if (current.hexKey.equals(targetKey)) {
+                    cheapestTargetState = current;
+                    break;
+                }
+
+                // Explore neighbors
+                for (int i = 0; i < 6; i++) {
+                    HexUtils.Hex neighbor = current.hex.getNeighbour(i);
+                    String neighborKey = neighbor.toString();
+
+                    if (!data.hexes.containsKey(neighborKey)) continue; // Void/obstacle
+
+                    ResearchManager.HexEntry neighborEntry = data.hexEntries.get(neighborKey);
+                    if (neighborEntry == null) continue;
+
+                    // If neighbor is a ROOT but not our target, we cannot cross it
+                    if (neighborEntry.type == 1 && !neighborKey.equals(targetKey)) {
+                        continue;
+                    }
+
+                    // Preplaced aspect (ROOT, or already placed aspect)
+                    Aspect preplaced = getAspectAt(data, finalPlacements, neighborKey);
+                    if (preplaced != null) {
+                        if (areRelated(current.aspect, preplaced)) {
+                            List<String> nextPathKeys = new ArrayList<String>(current.pathKeys);
+                            nextPathKeys.add(neighborKey);
+                            List<Aspect> nextPathAspects = new ArrayList<Aspect>(current.pathAspects);
+                            nextPathAspects.add(preplaced);
+
+                            queue.add(new SearchState(
+                                neighborKey, neighbor, preplaced, current.remainingPool.copy(), current.cost,
+                                nextPathKeys, nextPathAspects, current.combinations
+                            ));
+                        }
+                        continue;
+                    }
+
+                    // Otherwise, neighbor is vacant. We can try placing any registered aspect
+                    for (Aspect cand : Aspect.aspects.values()) {
+                        if (areRelated(current.aspect, cand)) {
+                            AspectList nextPool = current.remainingPool.copy();
+                            List<Combination> nextCombos = new ArrayList<Combination>(current.combinations);
+
+                            if (tryToConsume(cand, nextPool, nextCombos)) {
+                                double stepCost = getAspectCost(cand, current.remainingPool);
+                                if (stepCost != Double.POSITIVE_INFINITY) {
+                                    List<String> nextPathKeys = new ArrayList<String>(current.pathKeys);
+                                    nextPathKeys.add(neighborKey);
+                                    List<Aspect> nextPathAspects = new ArrayList<Aspect>(current.pathAspects);
+                                    nextPathAspects.add(cand);
+
+                                    queue.add(new SearchState(
+                                        neighborKey, neighbor, cand, nextPool, current.cost + stepCost,
+                                        nextPathKeys, nextPathAspects, nextCombos
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (cheapestTargetState == null) {
+                // Cannot connect this target, search fails
+                return null;
+            }
+
+            // Path found! Apply it
+            for (int i = 0; i < cheapestTargetState.pathKeys.size(); i++) {
+                String hexKey = cheapestTargetState.pathKeys.get(i);
+                Aspect a = cheapestTargetState.pathAspects.get(i);
+                connected.add(hexKey);
+
+                // If it was vacant, record the placement
+                ResearchManager.HexEntry entry = data.hexEntries.get(hexKey);
+                if (entry != null && entry.type == 0 && !finalPlacements.containsKey(hexKey)) {
+                    finalPlacements.put(hexKey, a);
+                }
+            }
+
+            finalCombinations.addAll(cheapestTargetState.combinations);
+            totalPool = cheapestTargetState.remainingPool; // Deduct used aspects
+        }
+
+        return new SolveResult(finalPlacements, finalCombinations);
+    }
+
+    private static SolveResult solveGreedyFallback(ResearchNoteData data, AspectList totalPool, List<String> rootKeys) {
         Set<String> connected = new HashSet<String>();
         connected.add(rootKeys.get(0));
 
