@@ -331,6 +331,17 @@ public class GuiOverlayHandler {
             return;
         }
 
+        if (result.timedOut) {
+            if (result.placements.isEmpty()) {
+                player.addChatMessage(new net.minecraft.util.ChatComponentText(
+                    "[ResearchSolver] Solve timed out — nothing usable found in time. Try again or fill this one manually."));
+                return;
+            } else {
+                player.addChatMessage(new net.minecraft.util.ChatComponentText(
+                    "[ResearchSolver] Solve timed out — placed what it could find; some hexes may be unfilled."));
+            }
+        }
+
         if (!ensureInkForPlacements(gui, tile, player, result.placements.size())) {
             player.addChatMessage(new net.minecraft.util.ChatComponentText("[ResearchSolver] No ink left in scribing tools and no auto-refill candidates found!"));
             return;
@@ -457,6 +468,11 @@ public class GuiOverlayHandler {
 
             ResearchSolver.SolveResult result = computeSolution(gui);
             if (result != null && !result.placements.isEmpty()) {
+                // Notify player if solver timed out but still found something
+                if (result.timedOut) {
+                    player.addChatMessage(new net.minecraft.util.ChatComponentText(
+                        "[ResearchSolver] Solve timed out — placed what it could find; some hexes may be unfilled."));
+                }
                 if (ensureInkForPlacements(gui, tile, player, result.placements.size())) {
                     // Send combination packets
                     int tx = tile.xCoord, ty = tile.yCoord, tz = tile.zCoord;
@@ -496,6 +512,14 @@ public class GuiOverlayHandler {
                     player.addChatMessage(new net.minecraft.util.ChatComponentText("[ResearchSolver] Out of ink. Solve All stopped. Solved: " + solveAllSolved + ", skipped: " + solveAllSkipped + ", remaining in inventory: " + remaining));
                     solveAllQueue = null;
                 }
+            } else if (result != null && result.timedOut) {
+                // Timed out with nothing usable
+                player.addChatMessage(new net.minecraft.util.ChatComponentText(
+                    "[ResearchSolver] Solve timed out — nothing usable found in time. Skipping this note."));
+                ScribeToolHelper.swapSlots(containerGui.inventorySlots, player, noteSlotIndex, 1);
+                solveAllSkipped++;
+                solveAllIndex++;
+                solveAllDelay = 5;
             } else {
                 solveAllSkipped++;
                 // Already completed or unsolvable, swap back out immediately

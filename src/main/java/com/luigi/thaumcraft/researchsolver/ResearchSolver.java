@@ -23,10 +23,19 @@ public class ResearchSolver {
     public static class SolveResult {
         public final Map<String, Aspect> placements;
         public final List<Combination> combinations;
+        /** True when the permutation search was cut short by the 1-second wall-clock budget. */
+        public final boolean timedOut;
 
         public SolveResult(Map<String, Aspect> placements, List<Combination> combinations) {
             this.placements = placements;
             this.combinations = combinations;
+            this.timedOut = false;
+        }
+
+        public SolveResult(Map<String, Aspect> placements, List<Combination> combinations, boolean timedOut) {
+            this.placements = placements;
+            this.combinations = combinations;
+            this.timedOut = timedOut;
         }
     }
 
@@ -177,16 +186,49 @@ public class ResearchSolver {
             List<String> targets = new ArrayList<String>(rootKeys);
             String startKey = targets.remove(0);
 
+            // 1-second wall-clock budget for the permutation search.
+            // (N-1)! orderings can be enormous for 10+ roots — cap to avoid hanging the render thread.
+            final long TIMEOUT_NS = 1_000_000_000L;
+            long deadline = System.nanoTime() + TIMEOUT_NS;
+            boolean timedOut = false;
+
+            // Best partial result found while no complete solution has been seen yet.
+            SolveResult bestPartial = null;
+
             List<List<String>> perms = getPermutations(targets);
             for (List<String> perm : perms) {
+                if (System.nanoTime() >= deadline) {
+                    timedOut = true;
+                    break;
+                }
                 SolveResult res = solveWithOrder(data, totalPool, startKey, perm);
                 if (res != null) {
-                    return res; // Complete solution found!
+                    return res; // Complete solution found — return immediately, no timeout flag.
                 }
+                // No complete solution from this ordering, but track any greedy partial result
+                // so we have something to show if we exhaust all orderings or hit the deadline.
+                if (bestPartial == null) {
+                    SolveResult partial = solveGreedyFallback(data, totalPool, rootKeys);
+                    if (partial != null && !partial.placements.isEmpty()) {
+                        bestPartial = partial;
+                    }
+                }
+            }
+
+            if (timedOut) {
+                // Return best partial found so far (greedy fallback as last resort).
+                if (bestPartial != null && !bestPartial.placements.isEmpty()) {
+                    return new SolveResult(bestPartial.placements, bestPartial.combinations, true);
+                }
+                SolveResult fallback = solveGreedyFallback(data, totalPool, rootKeys);
+                boolean hasPlacements = fallback != null && !fallback.placements.isEmpty();
+                Map<String, Aspect> p = hasPlacements ? fallback.placements : Collections.<String, Aspect>emptyMap();
+                List<Combination> c = hasPlacements ? fallback.combinations : Collections.<Combination>emptyList();
+                return new SolveResult(p, c, true);
             }
         }
 
-        // Fallback to greedy if permutations fail or if there is only 1 root
+        // Fallback to greedy if permutations all failed or there is only 1 root.
         return solveGreedyFallback(data, totalPool, rootKeys);
     }
 

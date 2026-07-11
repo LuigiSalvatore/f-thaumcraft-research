@@ -145,7 +145,9 @@ When you click **Solve All**, the mod iterates through your inventory notes, sen
 ## Technical notes (for future maintainers / agents)
 
 - **Strategy used:** Strategy A (extend vanilla GUI via `GuiScreenEvent`). Strategy B (full GUI replacement) was not needed because Thaumcraft's `GuiResearchTable` exposes enough fields at package-private or public visibility.
-- **Root-connection ordering (Bug 2 fix):** The solver connection is order-sensitive when aspects are scarce. To solve this, `solve()` permutes all connection orderings of the roots (for N roots there are (N-1)! permutations) and returns the first complete solution found, falling back to a greedy MST if none succeeds.
+- **Root-connection ordering (Bug 2 fix) + 1-second timeout:** The solver connection is order-sensitive when aspects are scarce. To solve this, `solve()` permutes all connection orderings of the roots (for N roots there are (N-1)! permutations) and returns the first complete solution found. To avoid hanging the render thread when there are many roots (10+ roots = 362,880+ orderings), each permutation loop iteration checks `System.nanoTime()` against a 1-second deadline. On timeout it falls back to the best greedy partial result found so far, and notifies the player in chat:
+  - *"Solve timed out — placed what it could find; some hexes may be unfilled."* — partial solution was placed.
+  - *"Solve timed out — nothing usable found in time. Try again or fill this one manually."* — nothing at all was placed.
 - **Scribing tools charge model:** Durability is measured via `stack.getMaxDamage() - stack.getItemDamage()`. Standard vanilla scribe tools have 100 uses, infused inkwells have 800. Any valid `IScribeTools` implementation is supported.
 - **Window click packets:** Inventory swaps (for Solve All notes and Auto-refill scribe tools) are sent via `PlayerControllerMP.windowClick` (which sends `C0EPacketClickWindow` to the server). The swap runs locally first, which makes it synchronous and instantaneous on the client.
 - **Access Transformers:** `src/main/resources/META-INF/accesstransformer.cfg` widens `GuiResearchTable.tileEntity` (private → public) and `GuiResearchTable.player` (package-private → public). `guiLeft`/`guiTop` on the vanilla `GuiContainer` superclass are obfuscated vanilla fields — they cannot be AT-widened in a mod-only AT — so those are read once per GUI open via reflection.
@@ -159,3 +161,41 @@ When you click **Solve All**, the mod iterates through your inventory notes, sen
 
 - No per-hex tooltip explaining why a hex was left empty.
 - View Solution overlay does not auto-refresh as you place aspects manually.
+
+---
+
+## Releasing
+
+Releases are published with the [`scripts/release.ps1`](scripts/release.ps1) PowerShell script. It
+builds the jar, creates a git tag, and publishes a GitHub release with the reobfuscated jar attached
+— all from the command line.
+
+### Prerequisites
+
+1. Install the [GitHub CLI](https://cli.github.com):
+   ```powershell
+   winget install GitHub.cli
+   ```
+2. Authenticate:
+   ```powershell
+   gh auth login
+   ```
+
+### Usage
+
+```powershell
+# Publish a release immediately
+.\scripts\release.ps1 -Version "v1.2.0"
+
+# With custom release notes
+.\scripts\release.ps1 -Version "v1.2.0" -Notes "Bugfixes and performance improvements"
+
+# Create as a draft (review on GitHub before publishing)
+.\scripts\release.ps1 -Version "v1.2.0" -Draft
+```
+
+The script will:
+1. Fail loudly if the build fails — no tag or push happens.
+2. Warn if there are uncommitted changes, and ask for confirmation.
+3. Auto-generate release notes from `git log` since the last tag if `-Notes` is not given.
+4. Attach the reobfuscated jar (newest non-`-dev`/`-sources` jar in `build/libs/`).
