@@ -22,6 +22,15 @@ public class Config {
     public static int tweakedSolveAllY = 46;
 
     public static boolean autoRefillScribingTools = true;
+    public static int maxSolveMs = 1500;
+    public static int vanillaPaletteX = 168;
+    public static int vanillaPaletteY = 4;
+    public static int tweakedPaletteX = 250;
+    public static int tweakedPaletteY = 10;
+    public static boolean paletteVertical = true;
+    public static boolean paletteCompact = false;
+    public static boolean paletteLocked = true;
+    public static boolean plainButtonMode = false;
 
     public static void load(File file) {
         configuration = new Configuration(file);
@@ -45,6 +54,24 @@ public class Config {
             tweakedSolveAllY = configuration.getInt("tweakedSolveAllY", "position", 46, -1000, 1000, "Y offset for Solve All button in Tweaked/Custom GUI");
 
             autoRefillScribingTools = configuration.getBoolean("autoRefillScribingTools", "behavior", true, "Auto-refill scribing tools from player inventory when the table's ink runs dry");
+            maxSolveMs = configuration.getInt("maxSolveMs", "behavior", 1500, 100, 30000,
+                "Maximum solver time in milliseconds. Only complete solutions are ever applied.");
+            vanillaPaletteX = configuration.getInt("vanillaPaletteX", "ui", vanillaSolveX, -2000, 2000,
+                "Research Solver palette X offset from the research GUI's top-left anchor");
+            vanillaPaletteY = configuration.getInt("vanillaPaletteY", "ui", vanillaSolveY, -2000, 2000,
+                "Research Solver palette Y offset from the research GUI's top-left anchor");
+            tweakedPaletteX = configuration.getInt("tweakedPaletteX", "ui", tweakedSolveX, -2000, 2000,
+                "Research Tweaks palette X offset from its GUI top-left anchor");
+            tweakedPaletteY = configuration.getInt("tweakedPaletteY", "ui", tweakedSolveY, -2000, 2000,
+                "Research Tweaks palette Y offset from its GUI top-left anchor");
+            paletteVertical = configuration.getBoolean("paletteVertical", "ui", true,
+                "Lay out palette actions vertically instead of horizontally");
+            paletteCompact = configuration.getBoolean("paletteCompact", "ui", false,
+                "Use compact action labels");
+            paletteLocked = configuration.getBoolean("paletteLocked", "ui", true,
+                "Lock the palette position. Use Layout to unlock and drag it.");
+            plainButtonMode = configuration.getBoolean("plainButtonMode", "ui", false,
+                "Use vanilla buttons for compatibility with GUI-overhaul mods");
         } catch (Exception e) {
             org.apache.logging.log4j.LogManager.getLogger("ThaumcraftResearchSolver")
                 .error("[ResearchSolver] Failed to sync config!", e);
@@ -53,5 +80,26 @@ public class Config {
                 configuration.save();
             }
         }
+    }
+
+    public static void savePalettePosition(boolean tweaks, int x, int y) {
+        if (tweaks) {
+            tweakedPaletteX = x;
+            tweakedPaletteY = y;
+            configuration.get("ui", "tweakedPaletteX", x).set(x);
+            configuration.get("ui", "tweakedPaletteY", y).set(y);
+        } else {
+            vanillaPaletteX = x;
+            vanillaPaletteY = y;
+            configuration.get("ui", "vanillaPaletteX", x).set(x);
+            configuration.get("ui", "vanillaPaletteY", y).set(y);
+        }
+        configuration.save();
+    }
+
+    public static void setPaletteLocked(boolean locked) {
+        paletteLocked = locked;
+        configuration.get("ui", "paletteLocked", locked).set(locked);
+        configuration.save();
     }
 }

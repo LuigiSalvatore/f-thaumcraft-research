@@ -13,10 +13,20 @@ public class ResearchSolver {
     public static class Combination {
         public final Aspect first;
         public final Aspect second;
+        public final Aspect result;
+        public final boolean firstFromBonus;
+        public final boolean secondFromBonus;
 
         public Combination(Aspect first, Aspect second) {
+            this(first, second, false, false);
+        }
+
+        public Combination(Aspect first, Aspect second, boolean firstFromBonus, boolean secondFromBonus) {
             this.first = first;
             this.second = second;
+            this.result = ResearchManager.getCombinationResult(first, second);
+            this.firstFromBonus = firstFromBonus;
+            this.secondFromBonus = secondFromBonus;
         }
     }
 
@@ -25,17 +35,45 @@ public class ResearchSolver {
         public final List<Combination> combinations;
         /** True when the permutation search was cut short by the 1-second wall-clock budget. */
         public final boolean timedOut;
+        public final boolean complete;
+        public final int inkRequired;
+        public final int playerPointsConsumed;
+        public final int bonusPointsConsumed;
+        public final double scarcityCost;
 
         public SolveResult(Map<String, Aspect> placements, List<Combination> combinations) {
             this.placements = placements;
             this.combinations = combinations;
             this.timedOut = false;
+            this.complete = !placements.isEmpty();
+            this.inkRequired = placements.size();
+            this.playerPointsConsumed = 0;
+            this.bonusPointsConsumed = 0;
+            this.scarcityCost = 0.0D;
         }
 
         public SolveResult(Map<String, Aspect> placements, List<Combination> combinations, boolean timedOut) {
             this.placements = placements;
             this.combinations = combinations;
             this.timedOut = timedOut;
+            this.complete = !placements.isEmpty();
+            this.inkRequired = placements.size();
+            this.playerPointsConsumed = 0;
+            this.bonusPointsConsumed = 0;
+            this.scarcityCost = 0.0D;
+        }
+
+        public SolveResult(Map<String, Aspect> placements, List<Combination> combinations, boolean timedOut,
+                           boolean complete, int inkRequired, int playerPointsConsumed,
+                           int bonusPointsConsumed, double scarcityCost) {
+            this.placements = Collections.unmodifiableMap(new LinkedHashMap<String, Aspect>(placements));
+            this.combinations = Collections.unmodifiableList(new ArrayList<Combination>(combinations));
+            this.timedOut = timedOut;
+            this.complete = complete;
+            this.inkRequired = inkRequired;
+            this.playerPointsConsumed = playerPointsConsumed;
+            this.bonusPointsConsumed = bonusPointsConsumed;
+            this.scarcityCost = scarcityCost;
         }
     }
 
@@ -160,76 +198,7 @@ public class ResearchSolver {
     }
 
     public static SolveResult solve(ResearchNoteData data, AspectList playerPool, AspectList bonusPool) {
-        if (data == null || data.hexEntries == null || data.hexes == null) {
-            return new SolveResult(Collections.<String, Aspect>emptyMap(), Collections.<Combination>emptyList());
-        }
-
-        // Initialize total pool = playerPool + bonusPool
-        AspectList totalPool = playerPool.copy();
-        totalPool.add(bonusPool);
-
-        // Find all root hex keys (String keys from the map, safe for Set/Map use).
-        List<String> rootKeys = new ArrayList<String>();
-        for (Map.Entry<String, ResearchManager.HexEntry> entry : data.hexEntries.entrySet()) {
-            if (entry.getValue().type == 1) { // ROOT
-                if (data.hexes.containsKey(entry.getKey())) {
-                    rootKeys.add(entry.getKey());
-                }
-            }
-        }
-
-        if (rootKeys.isEmpty()) {
-            return new SolveResult(Collections.<String, Aspect>emptyMap(), Collections.<Combination>emptyList());
-        }
-
-        if (rootKeys.size() > 1) {
-            List<String> targets = new ArrayList<String>(rootKeys);
-            String startKey = targets.remove(0);
-
-            // 1-second wall-clock budget for the permutation search.
-            // (N-1)! orderings can be enormous for 10+ roots — cap to avoid hanging the render thread.
-            final long TIMEOUT_NS = 1_000_000_000L;
-            long deadline = System.nanoTime() + TIMEOUT_NS;
-            boolean timedOut = false;
-
-            // Best partial result found while no complete solution has been seen yet.
-            SolveResult bestPartial = null;
-
-            List<List<String>> perms = getPermutations(targets);
-            for (List<String> perm : perms) {
-                if (System.nanoTime() >= deadline) {
-                    timedOut = true;
-                    break;
-                }
-                SolveResult res = solveWithOrder(data, totalPool, startKey, perm);
-                if (res != null) {
-                    return res; // Complete solution found — return immediately, no timeout flag.
-                }
-                // No complete solution from this ordering, but track any greedy partial result
-                // so we have something to show if we exhaust all orderings or hit the deadline.
-                if (bestPartial == null) {
-                    SolveResult partial = solveGreedyFallback(data, totalPool, rootKeys);
-                    if (partial != null && !partial.placements.isEmpty()) {
-                        bestPartial = partial;
-                    }
-                }
-            }
-
-            if (timedOut) {
-                // Return best partial found so far (greedy fallback as last resort).
-                if (bestPartial != null && !bestPartial.placements.isEmpty()) {
-                    return new SolveResult(bestPartial.placements, bestPartial.combinations, true);
-                }
-                SolveResult fallback = solveGreedyFallback(data, totalPool, rootKeys);
-                boolean hasPlacements = fallback != null && !fallback.placements.isEmpty();
-                Map<String, Aspect> p = hasPlacements ? fallback.placements : Collections.<String, Aspect>emptyMap();
-                List<Combination> c = hasPlacements ? fallback.combinations : Collections.<Combination>emptyList();
-                return new SolveResult(p, c, true);
-            }
-        }
-
-        // Fallback to greedy if permutations all failed or there is only 1 root.
-        return solveGreedyFallback(data, totalPool, rootKeys);
+        return ResourceAwareResearchSolver.solve(data, playerPool, bonusPool, Config.maxSolveMs);
     }
 
     private static List<List<String>> getPermutations(List<String> list) {

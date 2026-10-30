@@ -87,6 +87,34 @@ public class ScribeToolHelper {
         return candidates.get(0);
     }
 
+    /** Total usable ink in player-inventory tools visible through this container. */
+    public static int getInventoryInk(Container container) {
+        int total = 0;
+        for (ScribeToolCandidate candidate : findScribeTools(container)) {
+            total += candidate.remainingUses;
+        }
+        return total;
+    }
+
+    /**
+     * Prefer finishing the smallest partially-used tool first. This keeps the
+     * number of stranded, almost-empty inkwells low without ever starting a
+     * transaction that cannot finish.
+     */
+    public static ScribeToolCandidate getNextScribeTool(Container container) {
+        List<ScribeToolCandidate> candidates = findScribeTools(container);
+        if (candidates.isEmpty()) return null;
+        Collections.sort(candidates, new Comparator<ScribeToolCandidate>() {
+            @Override
+            public int compare(ScribeToolCandidate a, ScribeToolCandidate b) {
+                int result = Integer.compare(a.remainingUses, b.remainingUses);
+                if (result != 0) return result;
+                return Integer.compare(a.maxDamage, b.maxDamage);
+            }
+        });
+        return candidates.get(0);
+    }
+
     public static boolean swapSlots(Container container, EntityPlayer player, int fromSlotIndex, int toSlotIndex) {
         if (container == null || player == null) {
             return false;

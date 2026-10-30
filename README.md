@@ -1,6 +1,6 @@
 # Thaumcraft Research Solver
 
-A client-side-only Minecraft Forge mod that adds two buttons to the **Thaumcraft Research Table** GUI:
+A client-side-only Minecraft Forge mod that adds a draggable action palette to the **Thaumcraft Research Table** GUI:
 
 - **Solve** — automatically fills in the hex research puzzle with valid aspects drawn from your knowledge pool, sending the same clicks the game would have you make manually.
 - **View Solution** — shows a semi-transparent ghost preview of what each empty hex should be filled with, without actually placing anything.
@@ -15,12 +15,14 @@ A client-side-only Minecraft Forge mod that adds two buttons to the **Thaumcraft
 ### Supporting Custom GUI Mods (e.g. Thaumcraft Research Tweaks)
 The mod is designed to work with both the standard vanilla **Thaumcraft Research Table** and the rewritten custom GUI from the **Thaumcraft Research Tweaks** mod (`elan.tweaks.common.gui.ComposableContainerGui`). It automatically detects which GUI is open and adjusts layout offsets accordingly so that buttons and ghost previews are placed correctly.
 
-### Configurable Button Positions & Behavior
-You can configure the exact X/Y offsets of the **Solve**, **View Solution**, and **Solve All** buttons:
+### Draggable palette and behavior
+Click **Layout** to unlock the palette, then drag its `+` handle. Its position is clamped to the screen and saved independently for vanilla Thaumcraft and Research Tweaks. Right-click **Layout** to switch vertical/horizontal orientation; Shift-right-click toggles compact mode. A plain-button compatibility mode is available in config.
+
+You can also configure palette offsets and behavior:
 1. Go to the main menu -> **Mods**.
 2. Select **Thaumcraft Research Solver** from the list and click **Config**.
-3. Under the **position** category, you can change the button offsets for both the vanilla GUI and the tweaked GUI.
-4. Under the **behavior** category, you can toggle the **Auto-refill Scribing Tools** feature.
+3. Under **ui**, configure layout, compact mode, locking, and compatibility rendering.
+4. Under **behavior**, toggle **Auto-swap Scribing Tools** and set the solver time budget.
 5. Saving your changes will update settings immediately in-game (no restart required!).
 
 Alternatively, you can manually edit the config file created at `config/thaumcraftresearchsolver.cfg`.
@@ -37,7 +39,7 @@ Thaumcraft's research minigame shows you a hex grid of aspect slots. Some hexes 
 
 **Solve All** automates the entire process for multiple papers. It scans your inventory for research notes, slots them in one-by-one, solves them, and places them back.
 
-### Auto-refill Scribing Tools
+### Auto-swap Scribing Tools
 
 Solving puzzles consumes ink from the scribing tools (quill or inkwell) located in slot 0 of the table. When the tool in the table runs dry:
 - If **Auto-refill Scribing Tools** is enabled, the mod scans your inventory for any valid scribing tool (`IScribeTools` implementation).
@@ -80,7 +82,7 @@ The server genuinely does not store the "correct answer" for each blank hex — 
 You only need to install this on **your own game client**. The server does not need it.
 
 1. Make sure Forge 10.13.4.1614 is installed for Minecraft 1.7.10 (the GTNH pack already includes this).
-2. Drop the compiled `thaumcraftresearchsolver-1.0.0.jar` file into your `mods` folder.
+2. Drop the compiled `thaumcraftresearchsolver-1.3.0.jar` file into your `mods` folder.
    - On Windows: `%AppData%\.minecraft\mods\` (or your GTNH instance's `mods\` folder if using a launcher).
    - On macOS: `~/Library/Application Support/minecraft/mods/`
    - On Linux: `~/.minecraft/mods/`
@@ -118,7 +120,7 @@ On Windows use `gradlew.bat`:
 gradlew build
 ```
 
-The built jar will appear at `build/libs/thaumcraftresearchsolver-1.0.0.jar`.
+The built jar will appear under `build/libs/`.
 
 ### Troubleshooting the build
 

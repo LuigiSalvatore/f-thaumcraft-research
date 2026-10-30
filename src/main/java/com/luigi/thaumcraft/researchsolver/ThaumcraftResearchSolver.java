@@ -10,6 +10,7 @@ import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.network.NetworkCheckHandler;
 import cpw.mods.fml.relauncher.Side;
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.client.ClientCommandHandler;
 
 import java.util.Map;
 
@@ -35,7 +36,7 @@ public class ThaumcraftResearchSolver {
 
     public static final String MODID   = "thaumcraftresearchsolver";
     public static final String NAME    = "Thaumcraft Research Solver";
-    public static final String VERSION = "1.0.0";
+    public static final String VERSION = "1.3.0";
 
     @Mod.Instance(MODID)
     public static ThaumcraftResearchSolver instance;
@@ -57,8 +58,10 @@ public class ThaumcraftResearchSolver {
         // dedicated server, but as a belt-and-suspenders check: FML will not
         // call this class at all on the logical server because acceptableRemoteVersions="*"
         // and no server-side code is referenced anywhere in this mod.
-        MinecraftForge.EVENT_BUS.register(new GuiOverlayHandler());
+        ModernGuiOverlayHandler overlay = new ModernGuiOverlayHandler();
+        MinecraftForge.EVENT_BUS.register(overlay);
         MinecraftForge.EVENT_BUS.register(new GuiRenderHandler());
+        ClientCommandHandler.instance.registerCommand(new ResearchSolverTestCommand(overlay));
 
         // Register configuration changed event handler on FML bus
         FMLCommonHandler.instance().bus().register(this);

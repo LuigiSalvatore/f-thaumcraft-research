@@ -78,7 +78,7 @@ public class GuiOverlayHandler {
         throw new NoSuchFieldException("None of the fields " + java.util.Arrays.toString(names) + " found in " + clazz.getName());
     }
 
-    private static void initReflection() {
+    static void initReflection() {
         if (f_buttonList != null) {
             return; // already initialised
         }
@@ -168,7 +168,7 @@ public class GuiOverlayHandler {
         return null;
     }
 
-    private static EntityPlayer getPlayer(GuiScreen gui) {
+    static EntityPlayer getPlayer(GuiScreen gui) {
         if (gui instanceof GuiResearchTable && f_player != null) {
             try {
                 return (EntityPlayer) f_player.get(gui);
@@ -180,7 +180,7 @@ public class GuiOverlayHandler {
     }
 
     @SuppressWarnings("unchecked")
-    private static List<GuiButton> getButtonList(GuiScreen gui) {
+    static List<GuiButton> getButtonList(GuiScreen gui) {
         try {
             if (f_buttonList == null) {
                 return null;
@@ -192,7 +192,7 @@ public class GuiOverlayHandler {
         }
     }
 
-    private static int getGuiLeft(GuiScreen gui) {
+    static int getGuiLeft(GuiScreen gui) {
         try {
             if (f_guiLeft == null) {
                 return 0;
@@ -204,7 +204,7 @@ public class GuiOverlayHandler {
         }
     }
 
-    private static int getGuiTop(GuiScreen gui) {
+    static int getGuiTop(GuiScreen gui) {
         try {
             if (f_guiTop == null) {
                 return 0;
@@ -553,7 +553,7 @@ public class GuiOverlayHandler {
                 ScribeToolHelper.ScribeToolCandidate bestCandidate = null;
                 for (ScribeToolHelper.ScribeToolCandidate candidate : tools) {
                     if (candidate.remainingUses >= requiredPlacements) {
-                        if (bestCandidate == null || candidate.remainingUses < bestCandidate.remainingUses || 
+                        if (bestCandidate == null || candidate.remainingUses < bestCandidate.remainingUses ||
                             (candidate.remainingUses == bestCandidate.remainingUses && candidate.maxDamage < bestCandidate.maxDamage)) {
                             bestCandidate = candidate;
                         }
@@ -569,7 +569,7 @@ public class GuiOverlayHandler {
                 }
 
                 if (bestCandidate != null) {
-                    LOG.info("[ResearchSolver] Current quill has " + currentUses + " uses but " + requiredPlacements + 
+                    LOG.info("[ResearchSolver] Current quill has " + currentUses + " uses but " + requiredPlacements +
                              " needed. Swapping with tool from slot " + bestCandidate.containerSlotIndex + " (" + bestCandidate.remainingUses + " uses).");
                     boolean swapped = ScribeToolHelper.performSwap(container, player, bestCandidate.containerSlotIndex);
                     if (swapped) {

@@ -14,6 +14,7 @@ public class ModConfigGui extends GuiConfig {
         List<IConfigElement> elements = new ArrayList<IConfigElement>();
         elements.addAll(new ConfigElement(Config.configuration.getCategory("position")).getChildElements());
         elements.addAll(new ConfigElement(Config.configuration.getCategory("behavior")).getChildElements());
+        elements.addAll(new ConfigElement(Config.configuration.getCategory("ui")).getChildElements());
         return elements;
     }
 
