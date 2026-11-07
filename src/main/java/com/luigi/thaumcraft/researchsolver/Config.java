@@ -23,6 +23,7 @@ public class Config {
 
     public static boolean autoRefillScribingTools = true;
     public static int maxSolveMs = 1500;
+    public static boolean solverDiagnosticLogging = true;
     public static int vanillaPaletteX = 168;
     public static int vanillaPaletteY = 4;
     public static int tweakedPaletteX = 250;
@@ -56,6 +57,8 @@ public class Config {
             autoRefillScribingTools = configuration.getBoolean("autoRefillScribingTools", "behavior", true, "Auto-refill scribing tools from player inventory when the table's ink runs dry");
             maxSolveMs = configuration.getInt("maxSolveMs", "behavior", 1500, 100, 30000,
                 "Maximum solver time in milliseconds. Only complete solutions are ever applied.");
+            solverDiagnosticLogging = configuration.getBoolean("solverDiagnosticLogging", "behavior", true,
+                "Write per-solve diagnostic traces under .minecraft/logs/thaumcraftresearchsolver");
             vanillaPaletteX = configuration.getInt("vanillaPaletteX", "ui", vanillaSolveX, -2000, 2000,
                 "Research Solver palette X offset from the research GUI's top-left anchor");
             vanillaPaletteY = configuration.getInt("vanillaPaletteY", "ui", vanillaSolveY, -2000, 2000,

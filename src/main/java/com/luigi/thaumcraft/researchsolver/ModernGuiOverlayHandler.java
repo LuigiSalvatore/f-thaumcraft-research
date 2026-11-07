@@ -1,6 +1,7 @@
 package com.luigi.thaumcraft.researchsolver;
 
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
+import cpw.mods.fml.common.gameevent.TickEvent;
 import cpw.mods.fml.relauncher.Side;
 import cpw.mods.fml.relauncher.SideOnly;
 import net.minecraft.client.Minecraft;
@@ -38,6 +39,7 @@ public final class ModernGuiOverlayHandler {
 
     private final AsyncSolveService solver = new AsyncSolveService();
     private final SolveExecutionController execution = new SolveExecutionController();
+    private final CursorSlotSwapController noteSwap = new CursorSlotSwapController();
     private Request request = Request.NONE;
     private int paletteX;
     private int paletteY;
@@ -52,6 +54,10 @@ public final class ModernGuiOverlayHandler {
     private int allInventorySlot = -1;
     private int allDelay;
     private boolean allExecuting;
+    private boolean allWaitingSwapIn;
+    private boolean allWaitingSwapOut;
+    private boolean allPendingSuccess;
+    private boolean allNoteInTable;
     private int allSolved;
     private int allSkipped;
     private boolean liveTestArmed;
@@ -113,6 +119,14 @@ public final class ModernGuiOverlayHandler {
         clamp(event.gui);
         layout(event.gui);
         updateButtons(event.gui);
+    }
+
+    @SubscribeEvent
+    public void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase == TickEvent.Phase.END &&
+            GuiOverlayHandler.isResearchGui(Minecraft.getMinecraft().currentScreen)) {
+            noteSwap.tick();
+        }
     }
 
     @SubscribeEvent
@@ -217,6 +231,11 @@ public final class ModernGuiOverlayHandler {
 
     private void startAll(GuiScreen gui) {
         if (!(gui instanceof GuiContainer) || solver.isRunning() || execution.isBusy()) return;
+        EntityPlayer player = GuiOverlayHandler.getPlayer(gui);
+        if (player == null || player.inventory.getItemStack() != null) {
+            chat(gui, "Place the item currently held by the mouse before using Solve All.");
+            return;
+        }
         allSlots = new ArrayList<Integer>();
         if (GuiOverlayHandler.getNote(gui) != null) allSlots.add(-1);
         allSlots.addAll(inventoryNotes(gui));
@@ -225,11 +244,35 @@ public final class ModernGuiOverlayHandler {
         allSolved = 0;
         allSkipped = 0;
         allExecuting = false;
+        allWaitingSwapIn = false;
+        allWaitingSwapOut = false;
+        allNoteInTable = false;
         chat(gui, "Solve All queued " + allSlots.size() + " note(s).");
     }
 
     private void tickAll(GuiScreen gui) {
         if (allSlots == null || !(gui instanceof GuiContainer)) return;
+        if (allWaitingSwapIn) {
+            if (noteSwap.isBusy()) return;
+            allWaitingSwapIn = false;
+            if (!noteSwap.takeSuccess()) {
+                abortAll(gui, noteSwap.takeError());
+                return;
+            }
+            allNoteInTable = true;
+            allDelay = 4;
+            return;
+        }
+        if (allWaitingSwapOut) {
+            if (noteSwap.isBusy()) return;
+            allWaitingSwapOut = false;
+            if (!noteSwap.takeSuccess()) {
+                abortAll(gui, noteSwap.takeError());
+                return;
+            }
+            completeAllItem(allPendingSuccess);
+            return;
+        }
         if (allExecuting) {
             if (!execution.isFinished()) return;
             boolean success = execution.wasSuccessful();
@@ -245,32 +288,52 @@ public final class ModernGuiOverlayHandler {
             allSlots = null;
             return;
         }
-        int encoded = allSlots.get(allIndex);
-        if (encoded >= 0) {
-            allInventorySlot = encoded;
-            if (!ScribeToolHelper.swapSlots(((GuiContainer) gui).inventorySlots,
+        int slot = allSlots.get(allIndex);
+        if (slot >= 0 && !allNoteInTable) {
+            allInventorySlot = slot;
+            if (!noteSwap.begin(((GuiContainer) gui).inventorySlots,
                 GuiOverlayHandler.getPlayer(gui), allInventorySlot, 1)) {
-                finishAll(gui, false);
+                abortAll(gui, noteSwap.takeError());
                 return;
             }
-            allSlots.set(allIndex, -encoded - 2);
-            allDelay = 8;
+            allWaitingSwapIn = true;
             return;
         }
-        allInventorySlot = encoded <= -2 ? -encoded - 2 : -1;
+        allInventorySlot = -1;
         begin(gui, Request.ALL);
     }
 
     private void finishAll(GuiScreen gui, boolean success) {
         if (allSlots == null) return;
         if (allInventorySlot >= 0 && gui instanceof GuiContainer) {
-            ScribeToolHelper.swapSlots(((GuiContainer) gui).inventorySlots,
-                GuiOverlayHandler.getPlayer(gui), allInventorySlot, 1);
+            allPendingSuccess = success;
+            if (!noteSwap.begin(((GuiContainer) gui).inventorySlots,
+                GuiOverlayHandler.getPlayer(gui), allInventorySlot, 1)) {
+                abortAll(gui, noteSwap.takeError());
+                return;
+            }
+            allWaitingSwapOut = true;
+            return;
         }
+        completeAllItem(success);
+    }
+
+    private void completeAllItem(boolean success) {
         if (success) allSolved++; else allSkipped++;
         allIndex++;
         allInventorySlot = -1;
+        allNoteInTable = false;
         allDelay = 8;
+    }
+
+    private void abortAll(GuiScreen gui, String reason) {
+        chat(gui, "Solve All stopped: " + (reason == null ? "note transfer failed." : reason));
+        allSlots = null;
+        allInventorySlot = -1;
+        allWaitingSwapIn = false;
+        allWaitingSwapOut = false;
+        allExecuting = false;
+        allNoteInTable = false;
     }
 
     private static List<Integer> inventoryNotes(GuiScreen gui) {

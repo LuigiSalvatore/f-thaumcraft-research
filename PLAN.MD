@@ -1,5 +1,17 @@
 Implementation status: the core plan is implemented. The resource-aware complete-only solver, aspect synthesis provenance, exact ink preflight/tool swapping, acknowledged transactional execution, asynchronous solving, confirmed Solve All flow, and draggable action palette are now wired into the mod.
 
+The large-open-board timeout reported in `issues/ISSUES.md` was traced to uniform-cost expansion over every distinct resource ledger. The path search now uses a board-derived minimum-remaining-ink lower bound (resource-aware A*) and reuses one stable aspect order for ledger fingerprints. A 61-cell, five-root regression fixture verifies that this search shape produces a complete plan within a two-second solver budget. The two photographed live notes still require in-game confirmation.
+
+The next iteration intentionally changes the objective from global-best to fast local-best. It uses weighted A* (`g + 2h`), returns the first complete distance-sorted root order, and tries other root orders only after failure. Scarcity remains the tie-breaker, so equal-length paths prefer high-stock aspects and naturally favor repeatable related pairs such as Ordo/Instrumentum. This follows the weighted heuristic-search tradeoff described by Pohl and the fast-first principle of anytime search; unlike beam search, it does not impose a fixed beam that could discard the only feasible resource ledger.
+
+Algorithm references reviewed:
+
+- Ira Pohl, *Heuristic search viewed as path finding in a graph* (1970): https://research.ibm.com/publications/heuristic-search-viewed-as-path-finding-in-a-graph
+- Likhachev, Gordon, and Thrun, *ARA*: Anytime A* with Provable Bounds on Sub-Optimality* (2003): https://robots.stanford.edu/papers/Likhachev03b.pdf
+- Weixiong Zhang, *Complete Anytime Beam Search* (1998): https://aaai.org/Papers/AAAI/1998/AAAI98-060.pdf
+
+Per-solve diagnostic traces are written to `.minecraft/logs/thaumcraftresearchsolver/` by default. They contain a reconstructable note/pool/aspect snapshot, abundant related-pair ranking, root-order and path-attempt timings, queue/visited/generated/rejected counts, timeout stage, and final plan. They retain no player identity, server address, or chat, and rotate to the newest 25 files.
+
 The main conclusion: aspect combining is already partially implemented, but the solver’s resource model and search pruning make it unreliable. Ink “refilling” is actually tool swapping, and the current guard can knowingly begin a plan without enough ink to finish it.
 
 ## Current implementation

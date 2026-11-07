@@ -1,0 +1,9 @@
+// Usage: gradlew -I scripts/verify.gradle check assemble solverDiagnostics
+gradle.afterProject { project ->
+    if (project == gradle.rootProject) {
+        project.tasks.register('solverDiagnostics', JavaExec) {
+            classpath = project.sourceSets.main.runtimeClasspath
+            mainClass.set('com.luigi.thaumcraft.researchsolver.ResearchSolverDiagnostics')
+        }
+    }
+}

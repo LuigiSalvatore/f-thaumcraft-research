@@ -123,11 +123,19 @@ public class ScribeToolHelper {
         if (mc.playerController == null) {
             return false;
         }
+        if (player.inventory.getItemStack() != null) {
+            return false;
+        }
         int windowId = container.windowId;
         mc.playerController.windowClick(windowId, fromSlotIndex, 0, 0, player);
+        if (player.inventory.getItemStack() == null) {
+            return false;
+        }
         mc.playerController.windowClick(windowId, toSlotIndex, 0, 0, player);
-        mc.playerController.windowClick(windowId, fromSlotIndex, 0, 0, player);
-        return true;
+        if (player.inventory.getItemStack() != null) {
+            mc.playerController.windowClick(windowId, fromSlotIndex, 0, 0, player);
+        }
+        return player.inventory.getItemStack() == null;
     }
 
     public static boolean performSwap(Container container, EntityPlayer player, int fromSlotIndex) {

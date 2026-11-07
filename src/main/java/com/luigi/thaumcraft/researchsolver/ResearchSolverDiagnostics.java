@@ -68,6 +68,20 @@ final class ResearchSolverDiagnostics {
             bridge, new AspectList(), new AspectList(), 100);
         report.check(!impossible.complete && impossible.placements.isEmpty(),
             "impossible/timeout result never exposes a partial layout");
+
+        ResearchNoteData openBoard = largeOpenBoardNote();
+        AspectList openBoardPool = new AspectList().add(Aspect.GREED, 64).add(Aspect.MAN, 64);
+        ResearchSolver.SolveResult openBoardResult = ResourceAwareResearchSolver.solve(
+            openBoard, openBoardPool, new AspectList(), 2000);
+        report.check(openBoardResult.complete && openBoardResult.inkRequired > 0,
+            "large open five-root note is solved without exhaustive board expansion");
+
+        ResearchNoteData abundanceChoice = abundanceChoiceNote();
+        AspectList abundancePool = new AspectList().add(Aspect.TOOL, 40).add(Aspect.MOTION, 1);
+        ResearchSolver.SolveResult abundanceResult = ResourceAwareResearchSolver.solve(
+            abundanceChoice, abundancePool, new AspectList(), 500);
+        report.check(abundanceResult.complete && abundanceResult.placements.get("1:0") == Aspect.TOOL,
+            "local-best search prefers the more abundant valid bridge aspect");
         return report;
     }
 
@@ -84,6 +98,32 @@ final class ResearchSolverDiagnostics {
         add(note, 0, 0, Aspect.GREED, 1);
         add(note, 1, 0, null, 0);
         add(note, 2, 0, Aspect.TOOL, 1);
+        return note;
+    }
+
+    private static ResearchNoteData largeOpenBoardNote() {
+        ResearchNoteData note = new ResearchNoteData();
+        note.key = "diagnostic.large-open-board";
+        int radius = 4;
+        for (int q = -radius; q <= radius; q++) {
+            int minR = Math.max(-radius, -q - radius);
+            int maxR = Math.min(radius, -q + radius);
+            for (int r = minR; r <= maxR; r++) add(note, q, r, null, 0);
+        }
+        add(note, -4, 0, Aspect.GREED, 1);
+        add(note, 4, 0, Aspect.GREED, 1);
+        add(note, 0, -4, Aspect.GREED, 1);
+        add(note, 0, 4, Aspect.GREED, 1);
+        add(note, 4, -4, Aspect.GREED, 1);
+        return note;
+    }
+
+    private static ResearchNoteData abundanceChoiceNote() {
+        ResearchNoteData note = new ResearchNoteData();
+        note.key = "diagnostic.abundance-choice";
+        add(note, 0, 0, Aspect.ORDER, 1);
+        add(note, 1, 0, null, 0);
+        add(note, 2, 0, Aspect.ORDER, 1);
         return note;
     }
 

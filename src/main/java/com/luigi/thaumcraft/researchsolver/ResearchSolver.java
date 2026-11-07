@@ -198,7 +198,22 @@ public class ResearchSolver {
     }
 
     public static SolveResult solve(ResearchNoteData data, AspectList playerPool, AspectList bonusPool) {
-        return ResourceAwareResearchSolver.solve(data, playerPool, bonusPool, Config.maxSolveMs);
+        SolverTrace trace = SolverTrace.start(
+            data, playerPool, bonusPool, Config.maxSolveMs, ResourceAwareResearchSolver.HEURISTIC_WEIGHT);
+        SolveResult result = null;
+        Throwable failure = null;
+        try {
+            result = ResourceAwareResearchSolver.solve(data, playerPool, bonusPool, Config.maxSolveMs, trace);
+            return result;
+        } catch (RuntimeException exception) {
+            failure = exception;
+            throw exception;
+        } catch (Error error) {
+            failure = error;
+            throw error;
+        } finally {
+            trace.finish(result, failure);
+        }
     }
 
     private static List<List<String>> getPermutations(List<String> list) {

@@ -23,6 +23,7 @@ You can also configure palette offsets and behavior:
 2. Select **Thaumcraft Research Solver** from the list and click **Config**.
 3. Under **ui**, configure layout, compact mode, locking, and compatibility rendering.
 4. Under **behavior**, toggle **Auto-swap Scribing Tools** and set the solver time budget.
+   Diagnostic tracing is enabled by default and can be disabled there if needed.
 5. Saving your changes will update settings immediately in-game (no restart required!).
 
 Alternatively, you can manually edit the config file created at `config/thaumcraftresearchsolver.cfg`.
@@ -82,7 +83,7 @@ The server genuinely does not store the "correct answer" for each blank hex — 
 You only need to install this on **your own game client**. The server does not need it.
 
 1. Make sure Forge 10.13.4.1614 is installed for Minecraft 1.7.10 (the GTNH pack already includes this).
-2. Drop the compiled `thaumcraftresearchsolver-1.3.0.jar` file into your `mods` folder.
+2. Download [v1.3.1-beta.1](https://github.com/LuigiSalvatore/f-thaumcraft-research/releases/tag/v1.3.1-beta.1) and drop `thaumcraftresearchsolver-v1.3.1-beta.1.jar` into your `mods` folder, replacing the old solver JAR.
    - On Windows: `%AppData%\.minecraft\mods\` (or your GTNH instance's `mods\` folder if using a launcher).
    - On macOS: `~/Library/Application Support/minecraft/mods/`
    - On Linux: `~/.minecraft/mods/`
@@ -94,9 +95,9 @@ You only need to install this on **your own game client**. The server does not n
 
 ### Prerequisites
 
-- **Java 8** (the build toolchain requires JDK 8)
+- **Java 25** (the pinned daemon toolchain; output targets Java 8)
 - **Git**
-- The Thaumcraft jar from your GTNH install (see below)
+- Network access to GTNH Maven
 
 ### Step 1 — Get the Thaumcraft jar
 
@@ -106,26 +107,26 @@ This mod compiles against the GTNH build of Thaumcraft. The jar is **not include
 Thaumcraft-1.7.10-4.2.3.5.jar
 ```
 
-Place it at `libs/Thaumcraft-1.7.10-4.2.3.5.jar` inside this project folder (create the `libs/` directory if it doesn't exist). The `.gitignore` intentionally excludes this file — never commit it.
+The current build resolves the deobfuscated development dependency from GTNH Maven through `dependencies.gradle`. No manual JAR copy is needed. Never commit copyrighted mod JARs.
 
 ### Step 2 — Build
 
 ```
-./gradlew build
+./gradlew -I scripts/verify.gradle check assemble solverDiagnostics --no-configuration-cache
 ```
 
 On Windows use `gradlew.bat`:
 
 ```
-gradlew build
+gradlew.bat -I scripts/verify.gradle check assemble solverDiagnostics --no-configuration-cache
 ```
 
 The built jar will appear under `build/libs/`.
 
 ### Troubleshooting the build
 
-- **"Could not resolve Thaumcraft"** — make sure `libs/Thaumcraft-1.7.10-4.2.3.5.jar` exists.
-- **Java version errors** — run `java -version` and make sure it is Java 8. Java 11+ will not work with ForgeGradle for 1.7.10.
+- **Dependency resolution errors**: check GTNH Maven access and the pinned dependency in `dependencies.gradle`.
+- **Java version errors**: run `java -version` and use Java 25 with this wrapper.
 
 ---
 
@@ -137,7 +138,7 @@ It subscribes to `GuiScreenEvent.DrawScreenEvent.Pre` to continuously update the
 
 When you click **Solve**, the mod:
 1. Reads `ResearchNoteData` from the notes item currently in the table.
-2. Runs a path-finding search (Dijkstra's algorithm, trying all connection permutations of the roots) that builds a chain of aspects connecting all the ROOT hexes, choosing aspects by the priority order above.
+2. Runs a resource-aware weighted A* search over root connection orders. It tries the nearest-root order first and returns the first complete local-best plan. A board-derived estimate guides each search toward its target while exact player, bonus, and crafted-aspect ledgers prevent infeasible plans. Equal-length choices favor the aspects you hold most of, which naturally supports repeatable bridge pairs such as Ordo/Instrumentum when those are abundant.
 3. Sends `PacketAspectCombinationToServer` for any aspects it needs to combine, then `PacketAspectPlaceToServer` for each hex placement.
 
 When you click **Solve All**, the mod iterates through your inventory notes, sends window click packets to swap the note into slot 1, solves it, and swaps it back.
@@ -147,9 +148,8 @@ When you click **Solve All**, the mod iterates through your inventory notes, sen
 ## Technical notes (for future maintainers / agents)
 
 - **Strategy used:** Strategy A (extend vanilla GUI via `GuiScreenEvent`). Strategy B (full GUI replacement) was not needed because Thaumcraft's `GuiResearchTable` exposes enough fields at package-private or public visibility.
-- **Root-connection ordering (Bug 2 fix) + 1-second timeout:** The solver connection is order-sensitive when aspects are scarce. To solve this, `solve()` permutes all connection orderings of the roots (for N roots there are (N-1)! permutations) and returns the first complete solution found. To avoid hanging the render thread when there are many roots (10+ roots = 362,880+ orderings), each permutation loop iteration checks `System.nanoTime()` against a 1-second deadline. On timeout it falls back to the best greedy partial result found so far, and notifies the player in chat:
-  - *"Solve timed out — placed what it could find; some hexes may be unfilled."* — partial solution was placed.
-  - *"Solve timed out — nothing usable found in time. Try again or fill this one manually."* — nothing at all was placed.
+- **Root ordering, resource state, and timeout:** Root order matters when aspects are scarce, so the solver tries the distance-sorted order first and only evaluates alternatives if that order fails. Weighted A* deliberately favors progress toward the target and returns the first complete plan instead of spending the remaining budget proving global optimality. Remaining player, bonus, and crafted aspects stay in the visited-state identity. Only complete solutions are returned or applied; a timeout without a complete result spends nothing.
+- **Solver diagnostic traces:** Each Solve/Preview/Solve All calculation writes a standalone trace under `.minecraft/logs/thaumcraftresearchsolver/`. It records the full note geometry, roots and existing nodes, aspect recipes and pools, abundant valid bridge pairs, root orders, per-path search counters, timeouts, combinations, and final placements. No player name, server address, or chat is recorded. The newest 25 traces are retained. Set `solverDiagnosticLogging=false` under `behavior` to disable them.
 - **Scribing tools charge model:** Durability is measured via `stack.getMaxDamage() - stack.getItemDamage()`. Standard vanilla scribe tools have 100 uses, infused inkwells have 800. Any valid `IScribeTools` implementation is supported.
 - **Window click packets:** Inventory swaps (for Solve All notes and Auto-refill scribe tools) are sent via `PlayerControllerMP.windowClick` (which sends `C0EPacketClickWindow` to the server). The swap runs locally first, which makes it synchronous and instantaneous on the client.
 - **Access Transformers:** `src/main/resources/META-INF/accesstransformer.cfg` widens `GuiResearchTable.tileEntity` (private → public) and `GuiResearchTable.player` (package-private → public). `guiLeft`/`guiTop` on the vanilla `GuiContainer` superclass are obfuscated vanilla fields — they cannot be AT-widened in a mod-only AT — so those are read once per GUI open via reflection.
@@ -167,6 +167,8 @@ When you click **Solve All**, the mod iterates through your inventory notes, sen
 ---
 
 ## Releasing
+
+Follow [docs/RELEASING.md](docs/RELEASING.md) for the current prerelease workflow. [Release notes](docs/RELEASE_NOTES.md) describe changes since v1.3.0 and remaining runtime checks. The helper below is historical and does not implement all current release checks.
 
 Releases are published with the [`scripts/release.ps1`](scripts/release.ps1) PowerShell script. It
 builds the jar, creates a git tag, and publishes a GitHub release with the reobfuscated jar attached
