@@ -299,7 +299,7 @@ public final class ModernGuiOverlayHandler {
             allWaitingSwapIn = true;
             return;
         }
-        allInventorySlot = -1;
+        if (slot < 0) allInventorySlot = -1;
         begin(gui, Request.ALL);
     }
 
